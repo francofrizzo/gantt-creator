@@ -1344,39 +1344,55 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
 
     // ── Copy LLM prompt ──
     document.getElementById('btn-copy-prompt').addEventListener('click', () => {
-      const prompt = `I need you to generate task data for a Gantt chart. Please output the data in the following exact format:
+      const prompt = `I need you to generate a .gantt file for a Gantt chart tool. Output the file in the following exact plain-text format:
 
-LANES (one per line, use Name: count for multiple):
-Lane Name: count
-Lane Name 2
+VERSION 1
+
+START HH:MM
+END HH:MM
+
+LANES
+LaneName: count
+LaneName2
 ...
 
-Examples:
-Person: 2    (creates "Person 1" and "Person 2")
-Oven         (creates just "Oven")
-
-TASKS (one per line, pipe-separated):
+TASKS
 Task Name | Duration | Lane(s) | Color | Dependencies | @Start
+...
 
-Field details:
-- Task Name: a unique short name for the task
-- Duration: e.g. 15m, 1h, 1h30m, 45m
-- Lane(s): comma-separated lane group names with optional quantities (e.g. "Person", "Person*2", "Person, Oven*2") — tasks will be auto-assigned to sub-lanes. Use *count to require multiple sub-lanes of the same group. Append (P) to mark a lane as passive for that task (e.g. "Person(P)") — passive lanes are tracked visually but don't block scheduling.
-- Color: a hex color like #3b82f6 (optional, defaults to blue)
-- Dependencies: "after Task A, Task B" — tasks that must finish before this one starts (optional)
-- @Start: pin a task to a specific time, e.g. @08:30 (optional — omit to let auto-schedule decide)
+FORMAT RULES:
+- VERSION is always 1
+- START / END define the visible time window in 24h HH:MM format
+- LANES section: one lane per line. "Name: count" creates multiple sub-lanes (e.g. "Person: 2" creates "Person 1" and "Person 2"). Omit count for a single lane.
+- TASKS section: one task per line, fields pipe-separated:
+  - Name: unique task name
+  - Duration: e.g. 15m, 1h, 1h30m, 90m
+  - Lane(s): comma-separated lane names. Use *count for multiple sub-lanes (e.g. "Person*2"). Append (P) to mark as passive on that lane (e.g. "Person(P)") — passive lanes don't block scheduling.
+  - Color: hex color like #3b82f6 (optional, defaults to blue)
+  - Dependencies: "after Task A, Task B" (optional)
+  - @Start: pin to a specific time, e.g. @08:30 (optional — omit to let auto-schedule decide)
 
-Example:
-Chop vegetables | 15m | Person | #3b82f6 | @08:00
+EXAMPLE:
+
+VERSION 1
+
+START 08:00
+END 14:00
+
+LANES
+Person: 2
+Oven
+
+TASKS
+Chop vegetables | 15m | Person | #3b82f6
 Boil water | 10m | Person | #ef4444
+Season chicken | 10m | Person | #a855f7 | after Chop vegetables
 Cook pasta | 20m | Person | #f59e0b | after Boil water
 Bake chicken | 45m | Oven | #a855f7 | after Season chicken
 Plate meal | 10m | Person*2, Oven | #10b981 | after Cook pasta, Bake chicken
+Music playing | 60m | Person(P) | #6b7280
 
-START TIME: 08:00
-END TIME: 14:00
-
-Please generate a plan for: [DESCRIBE YOUR SCENARIO HERE]`;
+Please generate a .gantt file for: [DESCRIBE YOUR SCENARIO HERE]`;
 
       navigator.clipboard.writeText(prompt).then(() => {
         const btn = document.getElementById('btn-copy-prompt');
