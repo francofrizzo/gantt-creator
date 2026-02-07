@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gantt Creator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* custom scrollbar for the gantt area */
+    .gantt-scroll::-webkit-scrollbar { height: 10px; width: 10px; }
+    .gantt-scroll::-webkit-scrollbar-track { background: #1e293b; }
+    .gantt-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 5px; }
+    .gantt-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    textarea { font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace; }
+    .task-block { cursor: grab; transition: filter 0.1s; }
+    .task-block:hover { filter: brightness(1.15); }
+    .task-block.dragging { cursor: grabbing; filter: brightness(1.25); opacity: 0.9; }
+    .task-block.error { animation: shake 0.4s ease-in-out; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-4px); }
+      75% { transform: translateX(4px); }
+    }
+    .dep-arrow { pointer-events: none; }
+    .violation-line { stroke: #ef4444; stroke-dasharray: 6 3; }
+    .now-line { pointer-events: none; }
+    .tooltip {
+      position: fixed; background: #1e293b; color: #e2e8f0; padding: 6px 10px;
+      border-radius: 6px; font-size: 12px; pointer-events: none; z-index: 9999;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid #334155;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-200 h-screen flex flex-col overflow-hidden">
+  <!-- Top bar -->
+  <header class="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0">
+    <h1 class="text-lg font-semibold tracking-tight text-white">Gantt Creator</h1>
+    <div class="flex items-center gap-2 text-xs text-slate-400">
+      <span class="hidden sm:inline">Hold <kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-slate-300 font-mono">Shift</kbd> for 1-min snap</span>
+      <span class="hidden sm:inline">·</span>
+      <span id="snap-indicator" class="font-mono text-slate-300">Snap: 5 min</span>
+    </div>
+  </header>
+
+  <div class="flex flex-1 overflow-hidden">
+    <!-- Left panel -->
+    <aside id="left-panel" class="w-[420px] shrink-0 flex flex-col border-r border-slate-700 bg-slate-850">
+      <!-- Tabs -->
+      <div class="flex border-b border-slate-700 bg-slate-800">
+        <button class="tab-btn active flex-1 px-3 py-2 text-sm font-medium" data-tab="input">Input</button>
+        <button class="tab-btn flex-1 px-3 py-2 text-sm font-medium" data-tab="help">Format &amp; Help</button>
+      </div>
+
+      <!-- Input tab -->
+      <div id="tab-input" class="tab-content flex flex-col flex-1 overflow-hidden">
+        <!-- Time range -->
+        <div class="px-3 pt-3 pb-1">
+          <label class="block text-xs font-medium text-slate-400 mb-1">Time Range</label>
+          <div class="flex gap-2">
+            <input id="start-time" type="time" value="09:00" class="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+            <span class="self-center text-slate-500">→</span>
+            <input id="end-time" type="time" value="14:00" class="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+
+        <!-- Lanes -->
+        <div class="px-3 pt-2 pb-1">
+          <label class="block text-xs font-medium text-slate-400 mb-1">Lanes <span class="text-slate-500">(one per line)</span></label>
+          <textarea id="lanes-input" rows="4" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 resize-none" placeholder="Person 1&#10;Person 2&#10;Oven&#10;Stove">Person 1
+Person 2
+Oven</textarea>
+        </div>
+
+        <!-- Tasks -->
+        <div class="px-3 pt-2 pb-1 flex flex-col flex-1 overflow-hidden">
+          <label class="block text-xs font-medium text-slate-400 mb-1">Tasks <span class="text-slate-500">(one per line — see Help tab for format)</span></label>
+          <textarea id="tasks-input" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 resize-none flex-1" placeholder="Chop vegetables | 15m | Person 1 | #3b82f6&#10;Boil water | 10m | Stove | #ef4444&#10;Cook pasta | 20m | Stove | #f59e0b | after Boil water">Chop vegetables | 15m | Person 1 | #3b82f6
+Boil water | 10m | Person 2 | #ef4444
+Season chicken | 10m | Person 1 | #a855f7 | after Chop vegetables
+Cook pasta | 20m | Person 2 | #f59e0b | after Boil water
+Bake chicken | 45m | Oven | #a855f7 | after Season chicken
+Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken</textarea>
+        </div>
+
+        <!-- Actions -->
+        <div class="px-3 pt-2 pb-4 flex gap-2 shrink-0">
+          <button id="btn-render" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-3 rounded transition-colors">
+            Render
+          </button>
+          <button id="btn-auto" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium py-2 px-3 rounded transition-colors" title="Auto-schedule non-pinned tasks respecting dependencies">
+            Auto-schedule
+          </button>
+          <button id="btn-export" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium py-2 px-3 rounded transition-colors" title="Copy current task layout (with start times) to clipboard">
+            Copy Tasks
+          </button>
+          <button id="btn-copy-prompt" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium py-2 px-3 rounded transition-colors" title="Copy LLM prompt for generating input">
+            Copy Prompt
+          </button>
+        </div>
+      </div>
+
+      <!-- Help tab -->
+      <div id="tab-help" class="tab-content hidden flex-1 overflow-auto px-4 py-3 text-sm text-slate-300 leading-relaxed">
+        <h3 class="font-semibold text-white mb-2">Task Format</h3>
+        <pre class="bg-slate-800 rounded p-3 text-xs mb-3 overflow-x-auto">Name | Duration | Lane(s) | Color | Dependencies | @Start</pre>
+        <ul class="space-y-1 mb-4 text-xs text-slate-400">
+          <li><strong class="text-slate-200">Name</strong> — unique task name</li>
+          <li><strong class="text-slate-200">Duration</strong> — e.g. <code>15m</code>, <code>1h</code>, <code>1h30m</code>, <code>90m</code></li>
+          <li><strong class="text-slate-200">Lane(s)</strong> — comma-separated lane names the task occupies</li>
+          <li><strong class="text-slate-200">Color</strong> — hex color like <code>#3b82f6</code> (optional, defaults to blue)</li>
+          <li><strong class="text-slate-200">Dependencies</strong> — <code>after Task A, Task B</code> (optional)</li>
+          <li><strong class="text-slate-200">Start time</strong> — <code>@08:30</code> pins the task to a specific time (optional). Use <em>Copy Tasks</em> to export after dragging.</li>
+        </ul>
+        <h3 class="font-semibold text-white mb-2">Interaction</h3>
+        <ul class="space-y-1 text-xs text-slate-400">
+          <li>Drag blocks to reschedule. Default snap: <strong class="text-slate-200">5 minutes</strong>.</li>
+          <li>Hold <kbd class="px-1 py-0.5 bg-slate-700 rounded text-slate-300">Shift</kbd> while dragging for <strong class="text-slate-200">1-minute</strong> snap.</li>
+          <li>Dependency violations are shown with red dashed lines.</li>
+          <li>Hover a block for timing details.</li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Right panel: Gantt -->
+    <main class="flex-1 flex flex-col overflow-hidden bg-slate-900">
+      <!-- Gantt header with current time -->
+      <div class="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0">
+        <span class="text-sm text-slate-400" id="gantt-status">Define lanes &amp; tasks, then hit Render.</span>
+        <div class="flex items-center gap-3">
+          <label class="flex items-center gap-1.5 text-xs text-slate-400">
+            <input type="checkbox" id="show-now" class="rounded bg-slate-700 border-slate-600" checked />
+            Show current time
+          </label>
+          <label class="flex items-center gap-1.5 text-xs text-slate-400">
+            <input type="checkbox" id="show-deps" class="rounded bg-slate-700 border-slate-600" checked />
+            Show dependencies
+          </label>
+        </div>
+      </div>
+      <div id="gantt-container" class="flex-1 overflow-auto gantt-scroll relative">
+        <!-- populated by JS -->
+        <div id="gantt-empty" class="flex items-center justify-center h-full text-slate-600 text-sm select-none">
+          Your Gantt chart will appear here.
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Tooltip -->
+  <div id="tooltip" class="tooltip hidden"></div>
+
+  <script>
+    // ── State ──
+    let lanes = [];
+    let tasks = [];
+    let startMinutes = 0;
+    let endMinutes = 0;
+    let pixelsPerMinute = 3;
+    const LANE_LABEL_WIDTH = 120;
+    const HEADER_HEIGHT = 32;
+    const BLOCK_PADDING = 6;
+    let shiftHeld = false;
+    let dragState = null;
+
+    // ── DOM refs ──
+    const lanesInput = document.getElementById('lanes-input');
+    const tasksInput = document.getElementById('tasks-input');
+    const startTimeInput = document.getElementById('start-time');
+    const endTimeInput = document.getElementById('end-time');
+    const ganttContainer = document.getElementById('gantt-container');
+    const ganttEmpty = document.getElementById('gantt-empty');
+    const ganttStatus = document.getElementById('gantt-status');
+    const snapIndicator = document.getElementById('snap-indicator');
+    const tooltipEl = document.getElementById('tooltip');
+    const showNowCheck = document.getElementById('show-now');
+    const showDepsCheck = document.getElementById('show-deps');
+
+    // ── Tabs ──
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active', 'text-white', 'border-b-2', 'border-blue-500'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+        btn.classList.add('active', 'text-white', 'border-b-2', 'border-blue-500');
+        document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
+      });
+    });
+    document.querySelector('.tab-btn[data-tab="input"]').click();
+
+    // ── Shift key tracking ──
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Shift') { shiftHeld = true; snapIndicator.textContent = 'Snap: 1 min'; }
+    });
+    window.addEventListener('keyup', e => {
+      if (e.key === 'Shift') { shiftHeld = false; snapIndicator.textContent = 'Snap: 5 min'; }
+    });
+
+    // ── Parsing ──
+    function timeToMinutes(str) {
+      const [h, m] = str.split(':').map(Number);
+      return h * 60 + m;
+    }
+
+    function minutesToTime(m) {
+      const h = Math.floor(m / 60);
+      const min = m % 60;
+      return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+    }
+
+    function parseDuration(str) {
+      str = str.trim().toLowerCase();
+      let total = 0;
+      const hMatch = str.match(/(\d+)\s*h/);
+      const mMatch = str.match(/(\d+)\s*m/);
+      if (hMatch) total += parseInt(hMatch[1]) * 60;
+      if (mMatch) total += parseInt(mMatch[1]);
+      if (!hMatch && !mMatch) {
+        const n = parseInt(str);
+        if (!isNaN(n)) total = n;
+      }
+      return total;
+    }
+
+    function formatDuration(min) {
+      if (min < 60) return `${min}m`;
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return m > 0 ? `${h}h${m}m` : `${h}h`;
+    }
+
+    function parseLanes() {
+      return lanesInput.value.split('\n').map(l => l.trim()).filter(Boolean);
+    }
+
+    function parseTasks(laneList) {
+      const lines = tasksInput.value.split('\n').map(l => l.trim()).filter(Boolean);
+      const result = [];
+      for (const line of lines) {
+        const parts = line.split('|').map(s => s.trim());
+        if (parts.length < 3) continue;
+        const name = parts[0];
+        const duration = parseDuration(parts[1]);
+        const taskLanes = parts[2].split(',').map(l => l.trim()).filter(Boolean);
+        const color = (parts[3] && parts[3].startsWith('#')) ? parts[3] : '#3b82f6';
+        let deps = [];
+        const depPart = parts.find(p => p.toLowerCase().startsWith('after '));
+        if (depPart) {
+          deps = depPart.replace(/^after\s+/i, '').split(',').map(d => d.trim()).filter(Boolean);
+        }
+        // Optional pinned start time: @HH:MM
+        let pinnedStart = null;
+        const timePart = parts.find(p => /^@\d{1,2}:\d{2}$/.test(p));
+        if (timePart) {
+          pinnedStart = timeToMinutes(timePart.slice(1));
+        }
+        result.push({ name, duration, lanes: taskLanes, color, deps, startMin: pinnedStart, pinned: pinnedStart !== null });
+      }
+      return result;
+    }
+
+    // ── Export current task state back to text (with @start times) ──
+    function exportTasks() {
+      const lines = [];
+      for (const task of tasks) {
+        let line = `${task.name} | ${formatDuration(task.duration)} | ${task.lanes.join(', ')} | ${task.color}`;
+        if (task.deps.length) line += ` | after ${task.deps.join(', ')}`;
+        if (task.startMin !== null) line += ` | @${minutesToTime(task.startMin)}`;
+        lines.push(line);
+      }
+      return lines.join('\n');
+    }
+
+    // ── Auto-schedule ──
+    function autoSchedule() {
+      const scheduled = new Set();
+      const laneEnd = {};  // lane -> earliest free minute
+      lanes.forEach(l => laneEnd[l] = startMinutes);
+
+      // Pre-register pinned tasks (they keep their start time)
+      for (const task of tasks) {
+        if (task.pinned && task.startMin !== null) {
+          scheduled.add(task.name);
+          for (const lane of task.lanes) {
+            laneEnd[lane] = Math.max(laneEnd[lane] || startMinutes, task.startMin + task.duration);
+          }
+        }
+      }
+
+      // Topological order via repeated passes for non-pinned tasks
+      let remaining = tasks.filter(t => !t.pinned || t.startMin === null);
+      let passes = 0;
+      while (remaining.length > 0 && passes < 1000) {
+        passes++;
+        const next = [];
+        for (const task of remaining) {
+          const depsReady = task.deps.every(d => scheduled.has(d));
+          if (!depsReady) { next.push(task); continue; }
+
+          // Earliest start based on deps
+          let earliest = startMinutes;
+          for (const d of task.deps) {
+            const depTask = tasks.find(t => t.name === d);
+            if (depTask && depTask.startMin !== null) {
+              earliest = Math.max(earliest, depTask.startMin + depTask.duration);
+            }
+          }
+          // Earliest start based on lane availability
+          for (const lane of task.lanes) {
+            earliest = Math.max(earliest, laneEnd[lane] || startMinutes);
+          }
+
+          task.startMin = earliest;
+          for (const lane of task.lanes) {
+            laneEnd[lane] = earliest + task.duration;
+          }
+          scheduled.add(task.name);
+        }
+        remaining = next;
+      }
+
+      // Anything unresolved: place at start
+      for (const t of tasks) {
+        if (t.startMin === null) t.startMin = startMinutes;
+      }
+    }
+
+    // ── Dependency checking ──
+    function getViolations() {
+      const violations = [];
+      for (const task of tasks) {
+        for (const depName of task.deps) {
+          const dep = tasks.find(t => t.name === depName);
+          if (!dep) continue;
+          if (task.startMin < dep.startMin + dep.duration) {
+            violations.push({ from: dep, to: task });
+          }
+        }
+      }
+      return violations;
+    }
+
+    // ── Render ──
+    function render() {
+      lanes = parseLanes();
+      tasks = parseTasks(lanes);
+      startMinutes = timeToMinutes(startTimeInput.value);
+      endMinutes = timeToMinutes(endTimeInput.value);
+      if (endMinutes <= startMinutes) endMinutes = startMinutes + 360;
+
+      // Auto-schedule tasks that don't have a pinned start time
+      if (tasks.some(t => t.startMin === null)) autoSchedule();
+
+      const totalMinutes = endMinutes - startMinutes;
+      // Calculate pixelsPerMinute to fit well
+      const availableWidth = ganttContainer.clientWidth - LANE_LABEL_WIDTH - 20;
+      pixelsPerMinute = Math.max(2, availableWidth / totalMinutes);
+
+      drawGantt();
+    }
+
+    // ── Cascade layout: assign each task a sequence index per lane for a visual stagger ──
+    const CASCADE_STEP = 14;       // pixels of vertical offset per successive task
+    const BLOCK_HEIGHT = 30;       // height of each task block
+
+    function computeCascade() {
+      // For each lane, sort tasks by start time and assign a sequence index.
+      // taskCascade: Map<taskIdx, { laneName: sequenceIndex }>
+      // laneCounts: { laneName: number of tasks in that lane }
+      const taskCascade = new Map();
+      const laneCounts = {};
+
+      for (const lane of lanes) {
+        const laneTasks = [];
+        for (let ti = 0; ti < tasks.length; ti++) {
+          const t = tasks[ti];
+          if (t.startMin !== null && t.lanes.includes(lane)) {
+            laneTasks.push({ ti, start: t.startMin });
+          }
+        }
+        laneTasks.sort((a, b) => a.start - b.start);
+
+        for (let seq = 0; seq < laneTasks.length; seq++) {
+          const ti = laneTasks[seq].ti;
+          if (!taskCascade.has(ti)) taskCascade.set(ti, {});
+          taskCascade.get(ti)[lane] = seq;
+        }
+        laneCounts[lane] = laneTasks.length;
+      }
+
+      return { taskCascade, laneCounts };
+    }
+
+    function drawGantt() {
+      ganttEmpty.classList.add('hidden');
+      const totalMinutes = endMinutes - startMinutes;
+
+      // Compute cascade layout
+      const { taskCascade, laneCounts } = computeCascade();
+
+      // Compute per-lane heights and cumulative Y offsets
+      const laneHeights = [];
+      const laneYOffsets = [];
+      let cumulativeY = 0;
+      for (let i = 0; i < lanes.length; i++) {
+        const count = laneCounts[lanes[i]] || 1;
+        // Lane height = block height + cascade offset for each additional task + top/bottom padding
+        const h = BLOCK_HEIGHT + Math.max(0, count - 1) * CASCADE_STEP + BLOCK_PADDING * 2;
+        laneHeights.push(h);
+        laneYOffsets.push(cumulativeY);
+        cumulativeY += h;
+      }
+
+      const chartWidth = LANE_LABEL_WIDTH + totalMinutes * pixelsPerMinute + 20;
+      const chartHeight = HEADER_HEIGHT + cumulativeY + 20;
+
+      const violations = getViolations();
+      const violationCount = violations.length;
+      ganttStatus.textContent = tasks.length + ' tasks · ' + lanes.length + ' lanes' +
+        (violationCount > 0 ? ` · ${violationCount} violation${violationCount > 1 ? 's' : ''}` : '');
+      if (violationCount > 0) ganttStatus.classList.add('text-red-400');
+      else ganttStatus.classList.remove('text-red-400');
+
+      // Build SVG
+      let svg = `<svg id="gantt-svg" width="${chartWidth}" height="${chartHeight}" xmlns="http://www.w3.org/2000/svg" style="min-width:${chartWidth}px">`;
+
+      // Background
+      svg += `<rect width="${chartWidth}" height="${chartHeight}" fill="#0f172a"/>`;
+
+      // Time grid lines and labels
+      const step = totalMinutes <= 120 ? 15 : totalMinutes <= 360 ? 30 : 60;
+      for (let m = 0; m <= totalMinutes; m += step) {
+        const x = LANE_LABEL_WIDTH + m * pixelsPerMinute;
+        const isMajor = m % 60 === 0;
+        svg += `<line x1="${x}" y1="${HEADER_HEIGHT}" x2="${x}" y2="${chartHeight}" stroke="${isMajor ? '#334155' : '#1e293b'}" stroke-width="${isMajor ? 1 : 0.5}"/>`;
+        svg += `<text x="${x}" y="${HEADER_HEIGHT - 8}" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="monospace">${minutesToTime(startMinutes + m)}</text>`;
+      }
+
+      // Lane rows (variable height)
+      for (let i = 0; i < lanes.length; i++) {
+        const y = HEADER_HEIGHT + laneYOffsets[i];
+        const h = laneHeights[i];
+        svg += `<rect x="0" y="${y}" width="${chartWidth}" height="${h}" fill="${i % 2 === 0 ? '#0f172a' : '#111827'}"/>`;
+        // Lane label (vertically centered)
+        svg += `<text x="${LANE_LABEL_WIDTH - 10}" y="${y + h / 2 + 4}" fill="#cbd5e1" font-size="12" text-anchor="end" font-family="sans-serif">${escapeHtml(lanes[i])}</text>`;
+        // Separator
+        svg += `<line x1="0" y1="${y + h}" x2="${chartWidth}" y2="${y + h}" stroke="#1e293b" stroke-width="0.5"/>`;
+      }
+
+      // Lane label separator
+      svg += `<line x1="${LANE_LABEL_WIDTH}" y1="${HEADER_HEIGHT}" x2="${LANE_LABEL_WIDTH}" y2="${chartHeight}" stroke="#334155" stroke-width="1"/>`;
+
+      // Helper: get the vertical center of a task block in a given lane
+      function taskBlockCenterY(taskIdx, laneName) {
+        const laneIdx = lanes.indexOf(laneName);
+        if (laneIdx === -1) return HEADER_HEIGHT;
+        const seq = (taskCascade.get(taskIdx) || {})[laneName] || 0;
+        const laneY = HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING;
+        return laneY + seq * CASCADE_STEP + BLOCK_HEIGHT / 2;
+      }
+
+      // Dependency arrows (behind blocks)
+      if (showDepsCheck.checked) {
+        for (let ti = 0; ti < tasks.length; ti++) {
+          const task = tasks[ti];
+          for (const depName of task.deps) {
+            const depIdx = tasks.findIndex(t => t.name === depName);
+            const dep = depIdx >= 0 ? tasks[depIdx] : null;
+            if (!dep || dep.startMin === null || task.startMin === null) continue;
+            const isViolation = task.startMin < dep.startMin + dep.duration;
+
+            // Arrow from end of dep to start of task
+            const fromX = LANE_LABEL_WIDTH + (dep.startMin - startMinutes + dep.duration) * pixelsPerMinute;
+            const fromY = taskBlockCenterY(depIdx, dep.lanes[0]);
+
+            const toX = LANE_LABEL_WIDTH + (task.startMin - startMinutes) * pixelsPerMinute;
+            const toY = taskBlockCenterY(ti, task.lanes[0]);
+
+            const color = isViolation ? '#ef4444' : '#64748b';
+            const dashArray = isViolation ? '6 3' : 'none';
+
+            // Route: leave horizontally right, curve down/up, arrive horizontally into target
+            const GAP = 10;           // horizontal run-in so the arrow lands flat
+            const curveToX = toX - GAP; // where the curve ends, then a straight segment to toX
+            const midX = (fromX + curveToX) / 2;
+
+            svg += `<path d="M${fromX},${fromY} C${midX},${fromY} ${midX},${toY} ${curveToX},${toY} L${toX},${toY}" fill="none" stroke="${color}" stroke-width="1.5" stroke-dasharray="${dashArray}" class="dep-arrow" marker-end="url(#arrow-${isViolation ? 'red' : 'gray'})"/>`;
+          }
+        }
+      }
+
+      // Arrow markers
+      svg += `<defs>
+        <marker id="arrow-gray" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#64748b"/></marker>
+        <marker id="arrow-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#ef4444"/></marker>
+      </defs>`;
+
+      // Task blocks (cascaded by sequence index)
+      for (let ti = 0; ti < tasks.length; ti++) {
+        const task = tasks[ti];
+        if (task.startMin === null) continue;
+        for (const lane of task.lanes) {
+          const laneIdx = lanes.indexOf(lane);
+          if (laneIdx === -1) continue;
+          const seq = (taskCascade.get(ti) || {})[lane] || 0;
+          const x = LANE_LABEL_WIDTH + (task.startMin - startMinutes) * pixelsPerMinute;
+          const laneY = HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING;
+          const y = laneY + seq * CASCADE_STEP;
+          const w = task.duration * pixelsPerMinute;
+          const h = BLOCK_HEIGHT;
+          const isViolated = violations.some(v => v.to === task);
+
+          svg += `<g class="task-block" data-task-idx="${ti}" data-lane="${lane}">`;
+          svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${task.color}" opacity="0.88"/>`;
+          if (isViolated) {
+            svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="4 2"/>`;
+          }
+          // Text label (clipped)
+          const textMaxW = w - 8;
+          if (textMaxW > 20) {
+            svg += `<clipPath id="clip-${ti}-${laneIdx}-${seq}"><rect x="${x + 4}" y="${y}" width="${textMaxW}" height="${h}"/></clipPath>`;
+            svg += `<text x="${x + 6}" y="${y + h / 2 + 1}" fill="white" font-size="11" font-weight="500" dominant-baseline="middle" font-family="sans-serif" clip-path="url(#clip-${ti}-${laneIdx}-${seq})">${escapeHtml(task.name)}</text>`;
+          }
+          svg += `</g>`;
+        }
+      }
+
+      // Current time line
+      if (showNowCheck.checked) {
+        const now = new Date();
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+        if (nowMin >= startMinutes && nowMin <= endMinutes) {
+          const x = LANE_LABEL_WIDTH + (nowMin - startMinutes) * pixelsPerMinute;
+          svg += `<line x1="${x}" y1="${HEADER_HEIGHT}" x2="${x}" y2="${chartHeight}" stroke="#f43f5e" stroke-width="2" class="now-line"/>`;
+          svg += `<text x="${x}" y="${HEADER_HEIGHT - 2}" fill="#f43f5e" font-size="9" text-anchor="middle" font-family="monospace">NOW</text>`;
+        }
+      }
+
+      svg += '</svg>';
+      ganttContainer.innerHTML = svg;
+
+      // Attach drag handlers
+      attachDragHandlers();
+    }
+
+    // ── Drag ──
+    function attachDragHandlers() {
+      const svgEl = document.getElementById('gantt-svg');
+      if (!svgEl) return;
+
+      const blocks = svgEl.querySelectorAll('.task-block');
+      blocks.forEach(block => {
+        block.addEventListener('mousedown', onDragStart);
+      });
+
+      // Tooltip on hover
+      blocks.forEach(block => {
+        block.addEventListener('mouseenter', (e) => {
+          const idx = parseInt(block.dataset.taskIdx);
+          const task = tasks[idx];
+          if (!task) return;
+          const violations = getViolations().filter(v => v.to === task || v.from === task);
+          let html = `<strong>${escapeHtml(task.name)}</strong><br/>`;
+          html += `${minutesToTime(task.startMin)} → ${minutesToTime(task.startMin + task.duration)} (${formatDuration(task.duration)})<br/>`;
+          html += `Lanes: ${task.lanes.join(', ')}`;
+          if (task.deps.length) html += `<br/>After: ${task.deps.join(', ')}`;
+          if (violations.length) html += `<br/><span style="color:#ef4444">⚠ Dependency violation</span>`;
+          tooltipEl.innerHTML = html;
+          tooltipEl.classList.remove('hidden');
+        });
+        block.addEventListener('mousemove', (e) => {
+          tooltipEl.style.left = (e.clientX + 12) + 'px';
+          tooltipEl.style.top = (e.clientY - 10) + 'px';
+        });
+        block.addEventListener('mouseleave', () => {
+          tooltipEl.classList.add('hidden');
+        });
+      });
+
+      svgEl.addEventListener('mousemove', onDragMove);
+      svgEl.addEventListener('mouseup', onDragEnd);
+      svgEl.addEventListener('mouseleave', onDragEnd);
+    }
+
+    function onDragStart(e) {
+      e.preventDefault();
+      const block = e.currentTarget;
+      const idx = parseInt(block.dataset.taskIdx);
+      const task = tasks[idx];
+
+      const svgEl = document.getElementById('gantt-svg');
+      const svgRect = svgEl.getBoundingClientRect();
+      const mouseX = e.clientX - svgRect.left + ganttContainer.scrollLeft;
+      const taskX = LANE_LABEL_WIDTH + (task.startMin - startMinutes) * pixelsPerMinute;
+
+      dragState = {
+        taskIdx: idx,
+        offsetX: mouseX - taskX,
+        origStartMin: task.startMin
+      };
+
+      // Mark all blocks for this task
+      document.querySelectorAll(`.task-block[data-task-idx="${idx}"]`).forEach(b => b.classList.add('dragging'));
+      tooltipEl.classList.add('hidden');
+    }
+
+    function onDragMove(e) {
+      if (!dragState) return;
+      const svgEl = document.getElementById('gantt-svg');
+      const svgRect = svgEl.getBoundingClientRect();
+      const mouseX = e.clientX - svgRect.left + ganttContainer.scrollLeft;
+
+      const rawMin = startMinutes + (mouseX - LANE_LABEL_WIDTH - dragState.offsetX) / pixelsPerMinute;
+      const snapSize = shiftHeld ? 1 : 5;
+      let snapped = Math.round(rawMin / snapSize) * snapSize;
+      snapped = Math.max(startMinutes, Math.min(snapped, endMinutes - tasks[dragState.taskIdx].duration));
+
+      tasks[dragState.taskIdx].startMin = snapped;
+      drawGantt();
+
+      // Re-mark dragging visuals
+      document.querySelectorAll(`.task-block[data-task-idx="${dragState.taskIdx}"]`).forEach(b => b.classList.add('dragging'));
+    }
+
+    function onDragEnd(e) {
+      if (!dragState) return;
+      const task = tasks[dragState.taskIdx];
+
+      // Check violations for this task
+      const violations = getViolations().filter(v => v.to === task);
+      if (violations.length > 0) {
+        // Shake effect: briefly restore, then keep user's position but show error
+        document.querySelectorAll(`.task-block[data-task-idx="${dragState.taskIdx}"]`).forEach(b => {
+          b.classList.add('error');
+          b.classList.remove('dragging');
+        });
+      } else {
+        document.querySelectorAll(`.task-block[data-task-idx="${dragState.taskIdx}"]`).forEach(b => {
+          b.classList.remove('dragging');
+        });
+      }
+
+      dragState = null;
+      drawGantt();
+    }
+
+    // ── Helpers ──
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // ── Copy LLM prompt ──
+    document.getElementById('btn-copy-prompt').addEventListener('click', () => {
+      const prompt = `I need you to generate task data for a Gantt chart. Please output the data in the following exact format:
+
+LANES (one per line):
+Lane Name 1
+Lane Name 2
+...
+
+TASKS (one per line, pipe-separated):
+Task Name | Duration | Lane(s) | Color | Dependencies | @Start
+
+Field details:
+- Task Name: a unique short name for the task
+- Duration: e.g. 15m, 1h, 1h30m, 45m
+- Lane(s): comma-separated lane names this task occupies (must match a lane above)
+- Color: a hex color like #3b82f6 (optional, defaults to blue)
+- Dependencies: "after Task A, Task B" — tasks that must finish before this one starts (optional)
+- @Start: pin a task to a specific time, e.g. @08:30 (optional — omit to let auto-schedule decide)
+
+Example:
+Chop vegetables | 15m | Person 1 | #3b82f6 | @08:00
+Boil water | 10m | Stove | #ef4444
+Cook pasta | 20m | Stove | #f59e0b | after Boil water
+
+START TIME: 08:00
+END TIME: 14:00
+
+Please generate a plan for: [DESCRIBE YOUR SCENARIO HERE]`;
+
+      navigator.clipboard.writeText(prompt).then(() => {
+        const btn = document.getElementById('btn-copy-prompt');
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.add('bg-green-700');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('bg-green-700'); }, 1500);
+      });
+    });
+
+    // ── Copy Tasks (export current positions) ──
+    document.getElementById('btn-export').addEventListener('click', () => {
+      if (!tasks.length) return;
+      const text = exportTasks();
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('btn-export');
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.add('bg-green-700');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('bg-green-700'); }, 1500);
+      });
+    });
+
+    // ── Button handlers ──
+    document.getElementById('btn-render').addEventListener('click', () => {
+      // Re-parse; pinned (@) start times are preserved, others get auto-scheduled
+      render();
+    });
+
+    document.getElementById('btn-auto').addEventListener('click', () => {
+      lanes = parseLanes();
+      tasks = parseTasks(lanes);
+      tasks.forEach(t => { t.startMin = null; t.pinned = false; });
+      startMinutes = timeToMinutes(startTimeInput.value);
+      endMinutes = timeToMinutes(endTimeInput.value);
+      if (endMinutes <= startMinutes) endMinutes = startMinutes + 360;
+      autoSchedule();
+      const totalMinutes = endMinutes - startMinutes;
+      const availableWidth = ganttContainer.clientWidth - LANE_LABEL_WIDTH - 20;
+      pixelsPerMinute = Math.max(2, availableWidth / totalMinutes);
+      drawGantt();
+    });
+
+    showNowCheck.addEventListener('change', () => { if (tasks.length) drawGantt(); });
+    showDepsCheck.addEventListener('change', () => { if (tasks.length) drawGantt(); });
+
+    // ── Zoom with Ctrl+scroll ──
+    ganttContainer.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const oldPpm = pixelsPerMinute;
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        pixelsPerMinute = Math.max(1, Math.min(20, pixelsPerMinute * delta));
+        if (tasks.length) {
+          // Keep mouse position stable
+          const rect = ganttContainer.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left + ganttContainer.scrollLeft;
+          const ratio = pixelsPerMinute / oldPpm;
+          ganttContainer.scrollLeft = mouseX * ratio - (e.clientX - rect.left);
+          drawGantt();
+        }
+      }
+    }, { passive: false });
+
+    // ── Initial render with example data ──
+    render();
+  </script>
+</body>
+</html>
