@@ -1398,9 +1398,23 @@ Please generate a plan for: [DESCRIBE YOUR SCENARIO HERE]`;
       exportMenu.classList.toggle('hidden', !exportMenuOpen);
     });
 
+    function buildGanttFile() {
+      const exportedTasks = exportTasks();
+      return `VERSION 1
+
+START ${startTimeInput.value}
+END ${endTimeInput.value}
+
+LANES
+${lanesInput.value}
+
+TASKS
+${exportedTasks}`;
+    }
+
     document.getElementById('export-copy').addEventListener('click', () => {
       if (!tasks.length) return;
-      const text = exportTasks();
+      const text = buildGanttFile();
       navigator.clipboard.writeText(text).then(() => {
         const btn = document.getElementById('export-copy');
         const orig = btn.textContent;
@@ -1413,17 +1427,7 @@ Please generate a plan for: [DESCRIBE YOUR SCENARIO HERE]`;
 
     document.getElementById('export-save').addEventListener('click', () => {
       if (!tasks.length) return;
-      const exportedTasks = exportTasks();
-      const content = `VERSION 1
-
-START ${startTimeInput.value}
-END ${endTimeInput.value}
-
-LANES
-${lanesInput.value}
-
-TASKS
-${exportedTasks}`;
+      const content = buildGanttFile();
       const blob = new Blob([content], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
