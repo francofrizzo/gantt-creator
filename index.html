@@ -11,7 +11,7 @@
     .gantt-scroll::-webkit-scrollbar-track { background: #1e293b; }
     .gantt-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 5px; }
     .gantt-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
-    textarea { font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace; }
+    textarea { font-family: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace !important; }
     .task-block { cursor: grab; transition: filter 0.1s; }
     .task-block:hover { filter: brightness(1.15); }
     .task-block.dragging { cursor: grabbing; filter: brightness(1.25); opacity: 0.9; }
@@ -30,6 +30,36 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid #334155;
       white-space: nowrap;
     }
+    .context-menu {
+      position: fixed; background: #1e293b; color: #e2e8f0; padding: 4px 0;
+      border-radius: 6px; font-size: 12px; z-index: 10000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid #334155;
+      min-width: 120px;
+    }
+    .context-menu-item {
+      padding: 6px 12px; cursor: pointer; transition: background 0.1s;
+    }
+    .context-menu-item:hover {
+      background: #334155;
+    }
+    .context-menu-item.active {
+      background: #475569;
+    }
+    /* Style time inputs for dark theme */
+    input[type="time"] {
+      color: #e2e8f0;
+    }
+    input[type="time"]::-webkit-calendar-picker-indicator {
+      filter: invert(1);
+      cursor: pointer;
+    }
+    input[type="time"]::-webkit-datetime-edit-text {
+      color: #e2e8f0;
+    }
+    input[type="time"]::-webkit-datetime-edit-hour-field,
+    input[type="time"]::-webkit-datetime-edit-minute-field {
+      color: #e2e8f0;
+    }
   </style>
 </head>
 <body class="bg-slate-900 text-slate-200 h-screen flex flex-col overflow-hidden">
@@ -47,7 +77,7 @@
     <!-- Left panel -->
     <aside id="left-panel" class="w-[420px] shrink-0 flex flex-col border-r border-slate-700 bg-slate-850">
       <!-- Tabs -->
-      <div class="flex border-b border-slate-700 bg-slate-800">
+      <div class="flex border-b border-slate-700 bg-slate-800 h-10">
         <button class="tab-btn active flex-1 px-3 py-2 text-sm font-medium" data-tab="input">Input</button>
         <button class="tab-btn flex-1 px-3 py-2 text-sm font-medium" data-tab="help">Format &amp; Help</button>
       </div>
@@ -66,56 +96,78 @@
 
         <!-- Lanes -->
         <div class="px-3 pt-2 pb-1">
-          <label class="block text-xs font-medium text-slate-400 mb-1">Lanes <span class="text-slate-500">(one per line)</span></label>
-          <textarea id="lanes-input" rows="4" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 resize-none" placeholder="Person 1&#10;Person 2&#10;Oven&#10;Stove">Person 1
-Person 2
+          <label class="block text-xs font-medium text-slate-400 mb-1">Lanes <span class="text-slate-500">(one per line, use Name: count for multiple)</span></label>
+          <textarea id="lanes-input" rows="4" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 resize-none" placeholder="Person: 2&#10;Oven&#10;Stove">Person: 2
 Oven</textarea>
         </div>
 
         <!-- Tasks -->
         <div class="px-3 pt-2 pb-1 flex flex-col flex-1 overflow-hidden">
           <label class="block text-xs font-medium text-slate-400 mb-1">Tasks <span class="text-slate-500">(one per line — see Help tab for format)</span></label>
-          <textarea id="tasks-input" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 resize-none flex-1" placeholder="Chop vegetables | 15m | Person 1 | #3b82f6&#10;Boil water | 10m | Stove | #ef4444&#10;Cook pasta | 20m | Stove | #f59e0b | after Boil water">Chop vegetables | 15m | Person 1 | #3b82f6
-Boil water | 10m | Person 2 | #ef4444
-Season chicken | 10m | Person 1 | #a855f7 | after Chop vegetables
-Cook pasta | 20m | Person 2 | #f59e0b | after Boil water
+          <textarea id="tasks-input" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 resize-none flex-1" placeholder="Chop vegetables | 15m | Person | #3b82f6&#10;Boil water | 10m | Person | #ef4444&#10;Cook pasta | 20m | Person | #f59e0b | after Boil water">Chop vegetables | 15m | Person | #3b82f6
+Boil water | 10m | Person | #ef4444
+Season chicken | 10m | Person | #a855f7 | after Chop vegetables
+Cook pasta | 20m | Person | #f59e0b | after Boil water
 Bake chicken | 45m | Oven | #a855f7 | after Season chicken
-Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken</textarea>
+Plate meal | 10m | Person*2, Oven | #10b981 | after Cook pasta, Bake chicken
+Music playing | 60m | Person(P) | #6b7280</textarea>
+        </div>
+
+        <!-- Parse errors -->
+        <div id="parse-errors" class="px-3 hidden">
+          <div class="bg-red-950/60 border border-red-800/50 rounded px-3 py-2 text-xs text-red-300 space-y-0.5 max-h-28 overflow-auto"></div>
         </div>
 
         <!-- Actions -->
         <div class="px-3 pt-2 pb-4 flex gap-2 shrink-0">
-          <button id="btn-render" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-3 rounded transition-colors">
+          <button id="btn-render" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-2 rounded transition-colors hidden flex-1" title="Auto-schedule and render tasks">
             Render
           </button>
-          <button id="btn-auto" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium py-2 px-3 rounded transition-colors" title="Auto-schedule non-pinned tasks respecting dependencies">
-            Auto-schedule
+          <button id="btn-import" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium py-2 px-2 rounded transition-colors flex-1" title="Import .gantt file">
+            Import
           </button>
-          <button id="btn-export" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium py-2 px-3 rounded transition-colors" title="Copy current task layout (with start times) to clipboard">
-            Copy Tasks
-          </button>
-          <button id="btn-copy-prompt" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium py-2 px-3 rounded transition-colors" title="Copy LLM prompt for generating input">
-            Copy Prompt
+          <div class="relative flex-1">
+            <button id="btn-export" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium py-2 px-2 rounded transition-colors w-full" title="Export tasks">
+              Export
+            </button>
+            <div id="export-menu" class="context-menu hidden" style="position: absolute; bottom: 100%; left: 0; margin-bottom: 4px;">
+              <div class="context-menu-item" id="export-copy">Copy to clipboard</div>
+              <div class="context-menu-item" id="export-save">Save .gantt file</div>
+            </div>
+          </div>
+
+          <button id="btn-copy-prompt" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium py-2 px-2 rounded transition-colors flex-1" title="Copy LLM prompt for generating input">
+            LLM Prompt
           </button>
         </div>
+        <input type="file" id="file-input" accept=".gantt" style="display: none;" />
       </div>
 
       <!-- Help tab -->
       <div id="tab-help" class="tab-content hidden flex-1 overflow-auto px-4 py-3 text-sm text-slate-300 leading-relaxed">
+        <h3 class="font-semibold text-white mb-2">Lane Format</h3>
+        <pre class="bg-slate-800 rounded p-3 text-xs mb-3 overflow-x-auto">Name: count</pre>
+        <ul class="space-y-1 mb-4 text-xs text-slate-400">
+          <li><strong class="text-slate-200">Name</strong> — lane group name (e.g. <code>Person</code>, <code>Oven</code>)</li>
+          <li><strong class="text-slate-200">Count</strong> — number of sub-lanes (optional, defaults to 1)</li>
+          <li>Examples: <code>Person: 2</code> creates "Person 1" and "Person 2"; <code>Oven</code> creates just "Oven"</li>
+        </ul>
         <h3 class="font-semibold text-white mb-2">Task Format</h3>
         <pre class="bg-slate-800 rounded p-3 text-xs mb-3 overflow-x-auto">Name | Duration | Lane(s) | Color | Dependencies | @Start</pre>
         <ul class="space-y-1 mb-4 text-xs text-slate-400">
           <li><strong class="text-slate-200">Name</strong> — unique task name</li>
           <li><strong class="text-slate-200">Duration</strong> — e.g. <code>15m</code>, <code>1h</code>, <code>1h30m</code>, <code>90m</code></li>
-          <li><strong class="text-slate-200">Lane(s)</strong> — comma-separated lane names the task occupies</li>
+          <li><strong class="text-slate-200">Lane(s)</strong> — comma-separated lane group names with optional quantities (e.g. <code>Person</code>, <code>Person*2</code>, <code>Person, Oven*2</code>). Use <code>*count</code> to require multiple sub-lanes of the same group. Use <code>Person#1</code> to pin to a specific sub-lane. Append <code>(P)</code> to mark a lane as passive (e.g. <code>Person(P)</code>, <code>Person#1(P)</code>).</li>
           <li><strong class="text-slate-200">Color</strong> — hex color like <code>#3b82f6</code> (optional, defaults to blue)</li>
           <li><strong class="text-slate-200">Dependencies</strong> — <code>after Task A, Task B</code> (optional)</li>
           <li><strong class="text-slate-200">Start time</strong> — <code>@08:30</code> pins the task to a specific time (optional). Use <em>Copy Tasks</em> to export after dragging.</li>
+          <li><strong class="text-slate-200">Passive</strong> — append <code>(P)</code> to a lane name to mark the task as passive on that lane (e.g. <code>Person(P)</code>). Passive lane assignments are tracked visually but won't block scheduling of other tasks on those lanes. A task can be active on some lanes and passive on others.</li>
         </ul>
         <h3 class="font-semibold text-white mb-2">Interaction</h3>
         <ul class="space-y-1 text-xs text-slate-400">
-          <li>Drag blocks to reschedule. Default snap: <strong class="text-slate-200">5 minutes</strong>.</li>
+          <li>Drag blocks horizontally to reschedule. Default snap: <strong class="text-slate-200">5 minutes</strong>.</li>
           <li>Hold <kbd class="px-1 py-0.5 bg-slate-700 rounded text-slate-300">Shift</kbd> while dragging for <strong class="text-slate-200">1-minute</strong> snap.</li>
+          <li><strong class="text-slate-200">Right-click</strong> a task block to move it between sub-lanes of the same group (only works for single-lane tasks).</li>
           <li>Dependency violations are shown with red dashed lines.</li>
           <li>Hover a block for timing details.</li>
         </ul>
@@ -125,7 +177,7 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
     <!-- Right panel: Gantt -->
     <main class="flex-1 flex flex-col overflow-hidden bg-slate-900">
       <!-- Gantt header with current time -->
-      <div class="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0">
+      <div class="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0 h-10">
         <span class="text-sm text-slate-400" id="gantt-status">Define lanes &amp; tasks, then hit Render.</span>
         <div class="flex items-center gap-3">
           <label class="flex items-center gap-1.5 text-xs text-slate-400">
@@ -149,10 +201,14 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
 
   <!-- Tooltip -->
   <div id="tooltip" class="tooltip hidden"></div>
+  
+  <!-- Context Menu -->
+  <div id="context-menu" class="context-menu hidden"></div>
 
   <script>
     // ── State ──
-    let lanes = [];
+    let laneGroups = [];  // [{ name: "Person", count: 2 }, ...]
+    let lanes = [];       // ["Person 1", "Person 2", "Oven"] - derived from groups
     let tasks = [];
     let startMinutes = 0;
     let endMinutes = 0;
@@ -162,6 +218,9 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
     const BLOCK_PADDING = 6;
     let shiftHeld = false;
     let dragState = null;
+    let panState = null;
+    let suppressSync = false;  // Prevent sync loop when updating textarea programmatically
+    let dslChangeTimeout = null;  // Debounce timer
 
     // ── DOM refs ──
     const lanesInput = document.getElementById('lanes-input');
@@ -173,6 +232,7 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
     const ganttStatus = document.getElementById('gantt-status');
     const snapIndicator = document.getElementById('snap-indicator');
     const tooltipEl = document.getElementById('tooltip');
+    const contextMenuEl = document.getElementById('context-menu');
     const showNowCheck = document.getElementById('show-now');
     const showDepsCheck = document.getElementById('show-deps');
 
@@ -186,6 +246,19 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
       });
     });
     document.querySelector('.tab-btn[data-tab="input"]').click();
+
+    // ── Live DSL-to-Gantt sync (debounced) ──
+    function debouncedDslChange() {
+      if (suppressSync) return;
+      if (dslChangeTimeout) clearTimeout(dslChangeTimeout);
+      dslChangeTimeout = setTimeout(() => {
+        onDslChange();
+      }, 300);
+    }
+    lanesInput.addEventListener('input', debouncedDslChange);
+    tasksInput.addEventListener('input', debouncedDslChange);
+    startTimeInput.addEventListener('input', debouncedDslChange);
+    endTimeInput.addEventListener('input', debouncedDslChange);
 
     // ── Shift key tracking ──
     window.addEventListener('keydown', e => {
@@ -228,41 +301,178 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
       return m > 0 ? `${h}h${m}m` : `${h}h`;
     }
 
-    function parseLanes() {
-      return lanesInput.value.split('\n').map(l => l.trim()).filter(Boolean);
+    function parseLaneGroups() {
+      const lines = lanesInput.value.split('\n').map(l => l.trim()).filter(Boolean);
+      const groups = [];
+      const flatLanes = [];
+      
+      for (const line of lines) {
+        const match = line.match(/^(.+?)(?::\s*(\d+))?$/);
+        if (!match) continue;
+        const name = match[1].trim();
+        const count = match[2] ? parseInt(match[2], 10) : 1;
+        if (count < 1) continue;
+        
+        groups.push({ name, count });
+        
+        // Expand to sub-lanes
+        if (count === 1) {
+          flatLanes.push(name);
+        } else {
+          for (let i = 1; i <= count; i++) {
+            flatLanes.push(`${name} ${i}`);
+          }
+        }
+      }
+      
+      return { groups, flatLanes };
     }
 
     function parseTasks(laneList) {
       const lines = tasksInput.value.split('\n').map(l => l.trim()).filter(Boolean);
       const result = [];
-      for (const line of lines) {
+      const errors = [];
+      const seenNames = new Set();
+      const groupNames = laneGroups.map(g => g.name);
+
+      for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+        const line = lines[lineNum];
         const parts = line.split('|').map(s => s.trim());
-        if (parts.length < 3) continue;
+        if (parts.length < 3) {
+          errors.push(`Line ${lineNum + 1}: expected at least 3 fields (Name | Duration | Lane), got ${parts.length}`);
+          continue;
+        }
         const name = parts[0];
+        if (!name) {
+          errors.push(`Line ${lineNum + 1}: task name is empty`);
+          continue;
+        }
+        if (seenNames.has(name)) {
+          errors.push(`Line ${lineNum + 1}: duplicate task name "${name}"`);
+        }
+        seenNames.add(name);
+
         const duration = parseDuration(parts[1]);
-        const taskLanes = parts[2].split(',').map(l => l.trim()).filter(Boolean);
+        if (duration <= 0) {
+          errors.push(`Line ${lineNum + 1} ("${name}"): invalid duration "${parts[1]}"`);
+          continue;
+        }
+        
+        // Parse lane requirements: "Person", "Person*2", "Person#1", "Person(P)", "Person#1(P)", "Person, Oven*2"
+        const laneSpecs = parts[2].split(',').map(l => l.trim()).filter(Boolean);
+        const laneReqs = []; // [{ groupName, count, pinnedLanes?, passive }]
+        let laneError = false;
+        for (let spec of laneSpecs) {
+          // Check for (P) passive suffix (case-insensitive)
+          let isPassive = false;
+          const passiveMatch = spec.match(/^(.+?)\s*\([Pp]\)$/);
+          if (passiveMatch) {
+            isPassive = true;
+            spec = passiveMatch[1];
+          }
+          // Try formats: "Group#n" (pin to sub-lane), "Group*count", "Group: count", or just "Group"
+          const pinMatch = spec.match(/^(.+?)#(\d+)$/);
+          const starMatch = spec.match(/^(.+?)\*(\d+)$/);
+          const colonMatch = spec.match(/^(.+?):\s*(\d+)$/);
+          let gName, gCount, pinnedLanes = null;
+          if (pinMatch) {
+            gName = pinMatch[1].trim();
+            gCount = 1;
+            const subIdx = parseInt(pinMatch[2], 10);
+            const group = laneGroups.find(g => g.name === gName);
+            if (!group) {
+              errors.push(`Line ${lineNum + 1} ("${name}"): unknown lane "${gName}"`);
+              laneError = true;
+            } else if (group.count === 1) {
+              // Group has count 1 — sub-lane is just the group name, #N is ignored
+              pinnedLanes = [gName];
+            } else if (subIdx < 1 || subIdx > group.count) {
+              errors.push(`Line ${lineNum + 1} ("${name}"): "${gName}#${subIdx}" is out of range (1–${group.count})`);
+              laneError = true;
+            } else {
+              pinnedLanes = [`${gName} ${subIdx}`];
+            }
+          } else if (starMatch) {
+            gName = starMatch[1].trim();
+            gCount = parseInt(starMatch[2], 10);
+          } else if (colonMatch) {
+            gName = colonMatch[1].trim();
+            gCount = parseInt(colonMatch[2], 10);
+          } else {
+            gName = spec;
+            gCount = 1;
+          }
+          if (!pinnedLanes && !laneError && !groupNames.includes(gName)) {
+            errors.push(`Line ${lineNum + 1} ("${name}"): unknown lane "${gName}"`);
+            laneError = true;
+          }
+          laneReqs.push({ groupName: gName, count: gCount, pinnedLanes, passive: isPassive });
+        }
+        if (laneError) continue;
+        
         const color = (parts[3] && parts[3].startsWith('#')) ? parts[3] : '#3b82f6';
+        // Search optional fields only from index 4 onward (after name, duration, lanes, color)
+        const optionalParts = parts.slice(4);
         let deps = [];
-        const depPart = parts.find(p => p.toLowerCase().startsWith('after '));
+        const depPart = optionalParts.find(p => p.toLowerCase().startsWith('after '));
         if (depPart) {
           deps = depPart.replace(/^after\s+/i, '').split(',').map(d => d.trim()).filter(Boolean);
         }
         // Optional pinned start time: @HH:MM
         let pinnedStart = null;
-        const timePart = parts.find(p => /^@\d{1,2}:\d{2}$/.test(p));
+        const timePart = optionalParts.find(p => /^@\d{1,2}:\d{2}$/.test(p));
         if (timePart) {
           pinnedStart = timeToMinutes(timePart.slice(1));
         }
-        result.push({ name, duration, lanes: taskLanes, color, deps, startMin: pinnedStart, pinned: pinnedStart !== null });
+        result.push({ name, duration, laneReqs, color, deps, startMin: pinnedStart, pinned: pinnedStart !== null, assignedLanes: null });
       }
-      return result;
+
+      // Validate dependencies reference existing tasks
+      const taskNames = new Set(result.map(t => t.name));
+      for (const task of result) {
+        for (const dep of task.deps) {
+          if (!taskNames.has(dep)) {
+            errors.push(`Task "${task.name}": dependency "${dep}" not found`);
+          }
+        }
+      }
+
+      return { tasks: result, errors };
     }
 
-    // ── Export current task state back to text (with @start times) ──
+    // ── Export current task state back to text (with @start times and assigned lanes) ──
+    function subLaneToSpec(subLane) {
+      // Convert a flat sub-lane name back to pin syntax: "Person 2" -> "Person#2", "Oven" -> "Oven"
+      for (const group of laneGroups) {
+        if (group.count === 1 && subLane === group.name) return group.name;
+        if (group.count > 1 && subLane.startsWith(group.name + ' ')) {
+          const suffix = subLane.slice(group.name.length + 1);
+          return `${group.name}#${suffix}`;
+        }
+      }
+      return subLane;
+    }
+
     function exportTasks() {
       const lines = [];
       for (const task of tasks) {
-        let line = `${task.name} | ${formatDuration(task.duration)} | ${task.lanes.join(', ')} | ${task.color}`;
+        // Use actual assigned lanes if available, otherwise fall back to laneReqs
+        let laneSpecs;
+        if (task.assignedLanes && task.assignedLanes.length > 0) {
+          laneSpecs = task.assignedLanes.map(sl => {
+            const spec = subLaneToSpec(sl);
+            return isPassiveOnLane(task, sl) ? `${spec}(P)` : spec;
+          });
+        } else {
+          laneSpecs = task.laneReqs.map(req => {
+            const suffix = req.passive ? '(P)' : '';
+            if (req.pinnedLanes) return req.pinnedLanes.map(pl => subLaneToSpec(pl) + suffix);
+            if (req.count === 1) return req.groupName + suffix;
+            return `${req.groupName}*${req.count}${suffix}`;
+          }).flat();
+        }
+        
+        let line = `${task.name} | ${formatDuration(task.duration)} | ${laneSpecs.join(', ')} | ${task.color}`;
         if (task.deps.length) line += ` | after ${task.deps.join(', ')}`;
         if (task.startMin !== null) line += ` | @${minutesToTime(task.startMin)}`;
         lines.push(line);
@@ -270,18 +480,166 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
       return lines.join('\n');
     }
 
+    // ── Helper: get sub-lanes for a group name ──
+    function getSubLanesForGroup(groupName) {
+      return lanes.filter(l => {
+        if (l === groupName) return true; // count=1 case
+        return l.startsWith(groupName + ' ');
+      });
+    }
+
+    // ── Helper: check if a task is passive on a given sub-lane ──
+    function isPassiveOnLane(task, subLaneName) {
+      // Prefer exact pinned-lane match (handles Person#1(P), Person#2 correctly)
+      for (const req of task.laneReqs) {
+        if (req.pinnedLanes && req.pinnedLanes.includes(subLaneName)) return !!req.passive;
+      }
+      // Fall back to group-level match for unpinned requirements
+      for (const req of task.laneReqs) {
+        if (!req.pinnedLanes) {
+          const subLanes = getSubLanesForGroup(req.groupName);
+          if (subLanes.includes(subLaneName)) return !!req.passive;
+        }
+      }
+      return false;
+    }
+
+    // ── Helper: check if all tasks are fully pinned (have @time and all lanes pinned) ──
+    function isFullyPinned(parsedTasks) {
+      if (parsedTasks.length === 0) return false;
+      for (const task of parsedTasks) {
+        // Must have a pinned start time
+        if (!task.pinned || task.startMin === null) return false;
+        // All lane requirements must be pinned (have pinnedLanes) or belong to count-1 groups
+        for (const req of task.laneReqs) {
+          if (!req.pinnedLanes) {
+            // Check if this is a count-1 group (which is implicitly pinned)
+            const group = laneGroups.find(g => g.name === req.groupName);
+            if (!group || group.count > 1) return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    // ── Sync Gantt state back to DSL textarea ──
+    function syncGanttToDsl() {
+      if (!tasks.length) return;
+      suppressSync = true;
+      const exported = exportTasks();
+      tasksInput.value = exported;
+      suppressSync = false;
+    }
+
+    // ── Handle DSL changes (debounced) ──
+    function onDslChange() {
+      const parsed = parseLaneGroups();
+      laneGroups = parsed.groups;
+      lanes = parsed.flatLanes;
+      const parseResult = parseTasks(lanes);
+      const parsedTasks = parseResult.tasks;
+      showParseErrors(parseResult.errors);
+
+      // If there are parse errors, don't render
+      if (parseResult.errors.length > 0) {
+        document.getElementById('btn-render').classList.add('hidden');
+        return;
+      }
+
+      // Update time range
+      startMinutes = timeToMinutes(startTimeInput.value);
+      endMinutes = timeToMinutes(endTimeInput.value);
+      if (endMinutes <= startMinutes) endMinutes = startMinutes + 360;
+
+      // Check if fully pinned
+      if (isFullyPinned(parsedTasks)) {
+        // Fully pinned: render immediately without auto-scheduling
+        tasks = parsedTasks;
+        // Populate assignedLanes from pinnedLanes
+        for (const task of tasks) {
+          if (!task.assignedLanes) {
+            task.assignedLanes = [];
+            for (const req of task.laneReqs) {
+              if (req.pinnedLanes) {
+                task.assignedLanes.push(...req.pinnedLanes);
+              } else {
+                // Count-1 group: use the group name as the sub-lane
+                const group = laneGroups.find(g => g.name === req.groupName);
+                if (group && group.count === 1) {
+                  task.assignedLanes.push(req.groupName);
+                }
+              }
+            }
+          }
+        }
+        const totalMinutes = endMinutes - startMinutes;
+        const availableWidth = ganttContainer.clientWidth - LANE_LABEL_WIDTH - 20;
+        pixelsPerMinute = Math.max(2, availableWidth / totalMinutes);
+        drawGantt();
+        document.getElementById('btn-render').classList.add('hidden');
+      } else {
+        // Not fully pinned: show Render button, don't auto-render
+        tasks = parsedTasks;
+        document.getElementById('btn-render').classList.remove('hidden');
+      }
+    }
+
     // ── Auto-schedule ──
     function autoSchedule() {
       const scheduled = new Set();
-      const laneEnd = {};  // lane -> earliest free minute
+      const laneEnd = {};  // sub-lane -> earliest free minute
       lanes.forEach(l => laneEnd[l] = startMinutes);
 
-      // Pre-register pinned tasks (they keep their start time)
+      // Pre-register pinned tasks (they keep their start time, but need assignedLanes)
       for (const task of tasks) {
         if (task.pinned && task.startMin !== null) {
           scheduled.add(task.name);
-          for (const lane of task.lanes) {
-            laneEnd[lane] = Math.max(laneEnd[lane] || startMinutes, task.startMin + task.duration);
+          // Assign to sub-lanes if not already assigned
+          if (!task.assignedLanes) {
+            task.assignedLanes = [];
+            for (const req of task.laneReqs) {
+              // If this requirement has pinned sub-lanes, use them directly
+              if (req.pinnedLanes) {
+                for (const pl of req.pinnedLanes) {
+                  task.assignedLanes.push(pl);
+                  if (!req.passive) {
+                    laneEnd[pl] = Math.max(laneEnd[pl] || startMinutes, task.startMin + task.duration);
+                  }
+                }
+                continue;
+              }
+              const subLanes = getSubLanesForGroup(req.groupName);
+              if (subLanes.length === 0) continue;
+              
+              // Need to pick 'count' sub-lanes
+              const needed = Math.min(req.count, subLanes.length);
+              const selected = [];
+              
+              // Sort sub-lanes by availability (earliest end time first)
+              const available = subLanes.map(sl => ({
+                lane: sl,
+                end: laneEnd[sl] || startMinutes
+              })).sort((a, b) => a.end - b.end);
+              
+              // Pick the first 'needed' sub-lanes
+              for (let i = 0; i < needed; i++) {
+                const chosen = available[i];
+                selected.push(chosen.lane);
+                // Only update laneEnd for non-passive requirements
+                if (!req.passive) {
+                  laneEnd[chosen.lane] = Math.max(chosen.end, task.startMin + task.duration);
+                }
+              }
+              
+              task.assignedLanes.push(...selected);
+            }
+          } else {
+            // Already assigned, just update laneEnd (only for non-passive lanes)
+            for (const subLane of task.assignedLanes) {
+              if (!isPassiveOnLane(task, subLane)) {
+                laneEnd[subLane] = Math.max(laneEnd[subLane] || startMinutes, task.startMin + task.duration);
+              }
+            }
           }
         }
       }
@@ -304,35 +662,109 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
               earliest = Math.max(earliest, depTask.startMin + depTask.duration);
             }
           }
-          // Earliest start based on lane availability
-          for (const lane of task.lanes) {
-            earliest = Math.max(earliest, laneEnd[lane] || startMinutes);
+          
+          // Assign to sub-lanes: pick best sub-lanes per requirement
+          if (!task.assignedLanes) {
+            task.assignedLanes = [];
+            for (const req of task.laneReqs) {
+              // If this requirement has pinned sub-lanes, use them directly
+              if (req.pinnedLanes) {
+                for (const pl of req.pinnedLanes) {
+                  task.assignedLanes.push(pl);
+                  if (!req.passive) {
+                    earliest = Math.max(earliest, laneEnd[pl] || startMinutes);
+                  }
+                }
+                continue;
+              }
+              const subLanes = getSubLanesForGroup(req.groupName);
+              if (subLanes.length === 0) continue;
+              
+              // Need to pick 'count' sub-lanes
+              const needed = Math.min(req.count, subLanes.length);
+              
+              // Sort sub-lanes by availability (earliest end time first)
+              const available = subLanes.map(sl => ({
+                lane: sl,
+                end: laneEnd[sl] || startMinutes
+              })).sort((a, b) => a.end - b.end);
+              
+              // Pick the first 'needed' sub-lanes and track the latest end time
+              // For passive requirements, ignore lane availability (they don't conflict)
+              if (req.passive) {
+                for (let i = 0; i < needed; i++) {
+                  task.assignedLanes.push(available[i].lane);
+                }
+              } else {
+                for (let i = 0; i < needed; i++) {
+                  const chosen = available[i];
+                  task.assignedLanes.push(chosen.lane);
+                  earliest = Math.max(earliest, chosen.end);
+                }
+              }
+            }
+          } else {
+            // Already assigned, check availability (only for non-passive lanes)
+            for (const subLane of task.assignedLanes) {
+              if (!isPassiveOnLane(task, subLane)) {
+                earliest = Math.max(earliest, laneEnd[subLane] || startMinutes);
+              }
+            }
           }
 
           task.startMin = earliest;
-          for (const lane of task.lanes) {
-            laneEnd[lane] = earliest + task.duration;
+          // Only update laneEnd for non-passive lanes
+          for (const subLane of task.assignedLanes || []) {
+            if (!isPassiveOnLane(task, subLane)) {
+              laneEnd[subLane] = earliest + task.duration;
+            }
           }
           scheduled.add(task.name);
         }
         remaining = next;
       }
 
-      // Anything unresolved: place at start
+      // Anything unresolved: place at start and assign to first available sub-lanes
       for (const t of tasks) {
-        if (t.startMin === null) t.startMin = startMinutes;
+        if (t.startMin === null) {
+          t.startMin = startMinutes;
+          if (!t.assignedLanes) {
+            t.assignedLanes = [];
+            for (const req of t.laneReqs) {
+              const subLanes = getSubLanesForGroup(req.groupName);
+              if (subLanes.length > 0) {
+                t.assignedLanes.push(subLanes[0]);
+              }
+            }
+          }
+        }
       }
     }
 
-    // ── Dependency checking ──
+    // ── Violation checking ──
     function getViolations() {
       const violations = [];
+      // Dependency violations
       for (const task of tasks) {
         for (const depName of task.deps) {
           const dep = tasks.find(t => t.name === depName);
           if (!dep) continue;
           if (task.startMin < dep.startMin + dep.duration) {
-            violations.push({ from: dep, to: task });
+            violations.push({ type: 'dependency', from: dep, to: task });
+          }
+        }
+      }
+      // Overlap violations: two non-passive tasks on the same sub-lane overlapping in time
+      for (const subLane of lanes) {
+        const laneTasks = tasks.filter(t =>
+          !isPassiveOnLane(t, subLane) && t.startMin !== null && t.assignedLanes && t.assignedLanes.includes(subLane)
+        );
+        for (let i = 0; i < laneTasks.length; i++) {
+          for (let j = i + 1; j < laneTasks.length; j++) {
+            const a = laneTasks[i], b = laneTasks[j];
+            if (a.startMin < b.startMin + b.duration && b.startMin < a.startMin + a.duration) {
+              violations.push({ type: 'overlap', from: a, to: b, lane: subLane });
+            }
           }
         }
       }
@@ -341,14 +773,18 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
 
     // ── Render ──
     function render() {
-      lanes = parseLanes();
-      tasks = parseTasks(lanes);
+      const parsed = parseLaneGroups();
+      laneGroups = parsed.groups;
+      lanes = parsed.flatLanes;
+      const parseResult = parseTasks(lanes);
+      tasks = parseResult.tasks;
+      showParseErrors(parseResult.errors);
       startMinutes = timeToMinutes(startTimeInput.value);
       endMinutes = timeToMinutes(endTimeInput.value);
       if (endMinutes <= startMinutes) endMinutes = startMinutes + 360;
 
       // Auto-schedule tasks that don't have a pinned start time
-      if (tasks.some(t => t.startMin === null)) autoSchedule();
+      if (tasks.some(t => t.startMin === null || !t.assignedLanes)) autoSchedule();
 
       const totalMinutes = endMinutes - startMinutes;
       // Calculate pixelsPerMinute to fit well
@@ -359,35 +795,64 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
     }
 
     // ── Cascade layout: assign each task a sequence index per lane for a visual stagger ──
-    const CASCADE_STEP = 14;       // pixels of vertical offset per successive task
+    const CASCADE_STEP = 4;        // pixels of vertical offset per successive task (reduced for subtlety)
+    const PASSIVE_OFFSET = -35;    // pixels to float passive tasks above regular tasks
     const BLOCK_HEIGHT = 30;       // height of each task block
 
     function computeCascade() {
-      // For each lane, sort tasks by start time and assign a sequence index.
-      // taskCascade: Map<taskIdx, { laneName: sequenceIndex }>
-      // laneCounts: { laneName: number of tasks in that lane }
+      // For each sub-lane, separate passive and non-passive tasks, then assign sequence indices.
+      // Passive tasks get negative indices to float above, non-passive get 0, 1, 2, ...
+      // taskCascade: Map<taskIdx, { subLaneName: sequenceIndex }>
+      // laneCounts: { subLaneName: number of tasks in that sub-lane }
       const taskCascade = new Map();
       const laneCounts = {};
 
-      for (const lane of lanes) {
-        const laneTasks = [];
+      for (const subLane of lanes) {
+        const regularTasks = [];
+        const passiveTasks = [];
         for (let ti = 0; ti < tasks.length; ti++) {
           const t = tasks[ti];
-          if (t.startMin !== null && t.lanes.includes(lane)) {
-            laneTasks.push({ ti, start: t.startMin });
+          if (t.startMin !== null && t.assignedLanes && t.assignedLanes.includes(subLane)) {
+            if (isPassiveOnLane(t, subLane)) {
+              passiveTasks.push({ ti, start: t.startMin });
+            } else {
+              regularTasks.push({ ti, start: t.startMin });
+            }
           }
         }
-        laneTasks.sort((a, b) => a.start - b.start);
+        regularTasks.sort((a, b) => a.start - b.start);
+        passiveTasks.sort((a, b) => a.start - b.start);
 
-        for (let seq = 0; seq < laneTasks.length; seq++) {
-          const ti = laneTasks[seq].ti;
+        // Regular tasks: sequence 0, 1, 2, ...
+        for (let seq = 0; seq < regularTasks.length; seq++) {
+          const ti = regularTasks[seq].ti;
           if (!taskCascade.has(ti)) taskCascade.set(ti, {});
-          taskCascade.get(ti)[lane] = seq;
+          taskCascade.get(ti)[subLane] = seq;
         }
-        laneCounts[lane] = laneTasks.length;
+        
+        // Passive tasks: sequence 0, 1, 2, ... (will be positioned at top of lane)
+        for (let seq = 0; seq < passiveTasks.length; seq++) {
+          const ti = passiveTasks[seq].ti;
+          if (!taskCascade.has(ti)) taskCascade.set(ti, {});
+          taskCascade.get(ti)[subLane] = seq; // Use positive indices, we'll handle positioning separately
+        }
+        
+        laneCounts[subLane] = regularTasks.length + passiveTasks.length;
       }
 
-      return { taskCascade, laneCounts };
+      // Count passive tasks per lane for height calculation
+      const passiveCounts = {};
+      for (const subLane of lanes) {
+        passiveCounts[subLane] = 0;
+        for (let ti = 0; ti < tasks.length; ti++) {
+          const t = tasks[ti];
+          if (isPassiveOnLane(t, subLane) && t.startMin !== null && t.assignedLanes && t.assignedLanes.includes(subLane)) {
+            passiveCounts[subLane]++;
+          }
+        }
+      }
+
+      return { taskCascade, laneCounts, passiveCounts };
     }
 
     function drawGantt() {
@@ -395,16 +860,27 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
       const totalMinutes = endMinutes - startMinutes;
 
       // Compute cascade layout
-      const { taskCascade, laneCounts } = computeCascade();
+      const { taskCascade, laneCounts, passiveCounts } = computeCascade();
 
       // Compute per-lane heights and cumulative Y offsets
       const laneHeights = [];
       const laneYOffsets = [];
       let cumulativeY = 0;
       for (let i = 0; i < lanes.length; i++) {
-        const count = laneCounts[lanes[i]] || 1;
-        // Lane height = block height + cascade offset for each additional task + top/bottom padding
-        const h = BLOCK_HEIGHT + Math.max(0, count - 1) * CASCADE_STEP + BLOCK_PADDING * 2;
+        const subLane = lanes[i];
+        const count = laneCounts[subLane] || 1;
+        const passiveCount = passiveCounts[subLane] || 0;
+        
+        // Regular tasks height: block height + cascade offset for each additional task
+        const regularHeight = BLOCK_HEIGHT + Math.max(0, count - passiveCount - 1) * CASCADE_STEP;
+        
+        // Space needed for passive tasks above: offset + cascade space
+        const passiveSpace = passiveCount > 0 
+          ? Math.abs(PASSIVE_OFFSET) + Math.max(0, passiveCount - 1) * CASCADE_STEP + BLOCK_HEIGHT
+          : 0;
+        
+        // Total lane height = passive space + regular height + padding
+        const h = passiveSpace + regularHeight + BLOCK_PADDING * 2;
         laneHeights.push(h);
         laneYOffsets.push(cumulativeY);
         cumulativeY += h;
@@ -449,13 +925,23 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
       // Lane label separator
       svg += `<line x1="${LANE_LABEL_WIDTH}" y1="${HEADER_HEIGHT}" x2="${LANE_LABEL_WIDTH}" y2="${chartHeight}" stroke="#334155" stroke-width="1"/>`;
 
-      // Helper: get the vertical center of a task block in a given lane
-      function taskBlockCenterY(taskIdx, laneName) {
-        const laneIdx = lanes.indexOf(laneName);
+      // Helper: get the vertical center of a task block in a given sub-lane
+      function taskBlockCenterY(taskIdx, subLaneName) {
+        if (!subLaneName) return HEADER_HEIGHT;
+        const laneIdx = lanes.indexOf(subLaneName);
         if (laneIdx === -1) return HEADER_HEIGHT;
-        const seq = (taskCascade.get(taskIdx) || {})[laneName] || 0;
-        const laneY = HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING;
-        return laneY + seq * CASCADE_STEP + BLOCK_HEIGHT / 2;
+        const task = tasks[taskIdx];
+        const seq = (taskCascade.get(taskIdx) || {})[subLaneName] || 0;
+        const passiveCount = passiveCounts[subLaneName] || 0;
+        const passiveSpace = passiveCount > 0 
+          ? Math.abs(PASSIVE_OFFSET) + Math.max(0, passiveCount - 1) * CASCADE_STEP + BLOCK_HEIGHT
+          : 0;
+        const laneY = HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING + passiveSpace;
+        // Passive tasks start at top of lane and cascade down, regular tasks start after passive space
+        const y = task && isPassiveOnLane(task, subLaneName)
+          ? HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING + seq * CASCADE_STEP
+          : laneY + seq * CASCADE_STEP;
+        return y + BLOCK_HEIGHT / 2;
       }
 
       // Dependency arrows (behind blocks)
@@ -470,10 +956,10 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
 
             // Arrow from end of dep to start of task
             const fromX = LANE_LABEL_WIDTH + (dep.startMin - startMinutes + dep.duration) * pixelsPerMinute;
-            const fromY = taskBlockCenterY(depIdx, dep.lanes[0]);
+            const fromY = taskBlockCenterY(depIdx, dep.assignedLanes && dep.assignedLanes[0] ? dep.assignedLanes[0] : null);
 
             const toX = LANE_LABEL_WIDTH + (task.startMin - startMinutes) * pixelsPerMinute;
-            const toY = taskBlockCenterY(ti, task.lanes[0]);
+            const toY = taskBlockCenterY(ti, task.assignedLanes && task.assignedLanes[0] ? task.assignedLanes[0] : null);
 
             const color = isViolation ? '#ef4444' : '#64748b';
             const dashArray = isViolation ? '6 3' : 'none';
@@ -497,20 +983,35 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
       // Task blocks (cascaded by sequence index)
       for (let ti = 0; ti < tasks.length; ti++) {
         const task = tasks[ti];
-        if (task.startMin === null) continue;
-        for (const lane of task.lanes) {
-          const laneIdx = lanes.indexOf(lane);
+        if (task.startMin === null || !task.assignedLanes) continue;
+        for (const subLane of task.assignedLanes) {
+          const laneIdx = lanes.indexOf(subLane);
           if (laneIdx === -1) continue;
-          const seq = (taskCascade.get(ti) || {})[lane] || 0;
+          const seq = (taskCascade.get(ti) || {})[subLane] || 0;
           const x = LANE_LABEL_WIDTH + (task.startMin - startMinutes) * pixelsPerMinute;
-          const laneY = HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING;
-          const y = laneY + seq * CASCADE_STEP;
+          const passiveCount = passiveCounts[subLane] || 0;
+          const passiveSpace = passiveCount > 0 
+            ? Math.abs(PASSIVE_OFFSET) + Math.max(0, passiveCount - 1) * CASCADE_STEP + BLOCK_HEIGHT
+            : 0;
+          const laneY = HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING + passiveSpace;
+          // Passive tasks start at top of lane and cascade down, regular tasks start after passive space
+          const passiveHere = isPassiveOnLane(task, subLane);
+          const y = passiveHere 
+            ? HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING + seq * CASCADE_STEP
+            : laneY + seq * CASCADE_STEP;
           const w = task.duration * pixelsPerMinute;
           const h = BLOCK_HEIGHT;
-          const isViolated = violations.some(v => v.to === task);
+          const isViolated = violations.some(v =>
+            v.to === task || (v.type === 'overlap' && v.from === task)
+          );
 
-          svg += `<g class="task-block" data-task-idx="${ti}" data-lane="${lane}">`;
-          svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${task.color}" opacity="0.88"/>`;
+          svg += `<g class="task-block" data-task-idx="${ti}" data-sublane="${subLane}">`;
+          // Passive on this lane: reduced opacity and dashed border
+          const opacity = passiveHere ? '0.5' : '0.88';
+          svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${task.color}" opacity="${opacity}"/>`;
+          if (passiveHere) {
+            svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="none" stroke="${task.color}" stroke-width="1.5" stroke-dasharray="4 2"/>`;
+          }
           if (isViolated) {
             svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="4 2"/>`;
           }
@@ -549,7 +1050,14 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
 
       const blocks = svgEl.querySelectorAll('.task-block');
       blocks.forEach(block => {
-        block.addEventListener('mousedown', onDragStart);
+        block.addEventListener('mousedown', (e) => {
+          if (e.button === 0) onDragStart(e); // left click
+          else if (e.button === 2) onRightClick(e, block); // right click
+        });
+        block.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          onRightClick(e, block);
+        });
       });
 
       // Tooltip on hover
@@ -558,12 +1066,29 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
           const idx = parseInt(block.dataset.taskIdx);
           const task = tasks[idx];
           if (!task) return;
-          const violations = getViolations().filter(v => v.to === task || v.from === task);
+          const taskViolations = getViolations().filter(v => v.to === task || v.from === task);
           let html = `<strong>${escapeHtml(task.name)}</strong><br/>`;
           html += `${minutesToTime(task.startMin)} → ${minutesToTime(task.startMin + task.duration)} (${formatDuration(task.duration)})<br/>`;
-          html += `Lanes: ${task.lanes.join(', ')}`;
+          const reqStrs = task.laneReqs.map(req => {
+            let label;
+            if (req.pinnedLanes) label = req.pinnedLanes.join(', ');
+            else label = req.count === 1 ? req.groupName : `${req.groupName}*${req.count}`;
+            return req.passive ? label + '(P)' : label;
+          });
+          html += `Needs: ${reqStrs.join(', ')}`;
+          const passiveLanes = task.laneReqs.filter(r => r.passive).map(r => r.groupName);
+          if (passiveLanes.length) html += `<br/><span style="color:#94a3b8; font-size:10px;">Passive on: ${passiveLanes.join(', ')}</span>`;
+          if (task.assignedLanes && task.assignedLanes.length > 0) {
+            html += `<br/>Assigned to: ${task.assignedLanes.join(', ')}`;
+          }
           if (task.deps.length) html += `<br/>After: ${task.deps.join(', ')}`;
-          if (violations.length) html += `<br/><span style="color:#ef4444">⚠ Dependency violation</span>`;
+          const depViolations = taskViolations.filter(v => v.type === 'dependency');
+          const overlapViolations = taskViolations.filter(v => v.type === 'overlap');
+          if (depViolations.length) html += `<br/><span style="color:#ef4444">⚠ Dependency violation</span>`;
+          if (overlapViolations.length) {
+            const others = overlapViolations.map(v => v.from === task ? v.to.name : v.from.name);
+            html += `<br/><span style="color:#ef4444">⚠ Overlaps with ${others.map(n => escapeHtml(n)).join(', ')}</span>`;
+          }
           tooltipEl.innerHTML = html;
           tooltipEl.classList.remove('hidden');
         });
@@ -581,8 +1106,59 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
       svgEl.addEventListener('mouseleave', onDragEnd);
     }
 
+    // ── Pan (drag empty space to scroll) ──
+    function onPanStart(e) {
+      // Don't start panning if clicking on a task block or if already dragging a task
+      if (dragState) return;
+      
+      // Check if clicking on a task block or its children
+      const clickedElement = e.target;
+      if (clickedElement.closest('.task-block') || clickedElement.classList.contains('task-block')) {
+        return;
+      }
+      
+      // Only pan with left mouse button
+      if (e.button !== 0) return;
+      
+      panState = {
+        startX: e.clientX,
+        startY: e.clientY,
+        startScrollLeft: ganttContainer.scrollLeft,
+        startScrollTop: ganttContainer.scrollTop
+      };
+      
+      ganttContainer.style.cursor = 'grabbing';
+      e.preventDefault();
+    }
+
+    function onPanMove(e) {
+      if (!panState) return;
+      
+      const deltaX = panState.startX - e.clientX;
+      const deltaY = panState.startY - e.clientY;
+      
+      ganttContainer.scrollLeft = panState.startScrollLeft + deltaX;
+      ganttContainer.scrollTop = panState.startScrollTop + deltaY;
+    }
+
+    function onPanEnd(e) {
+      if (!panState) return;
+      
+      panState = null;
+      ganttContainer.style.cursor = '';
+    }
+
+    // Attach pan handlers to gantt container
+    ganttContainer.addEventListener('mousedown', onPanStart);
+    ganttContainer.addEventListener('mousemove', onPanMove);
+    ganttContainer.addEventListener('mouseup', onPanEnd);
+    ganttContainer.addEventListener('mouseleave', onPanEnd);
+
     function onDragStart(e) {
       e.preventDefault();
+      e.stopPropagation(); // Prevent pan from starting
+      if (panState) panState = null; // Stop any active pan
+      
       const block = e.currentTarget;
       const idx = parseInt(block.dataset.taskIdx);
       const task = tasks[idx];
@@ -605,16 +1181,52 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
 
     function onDragMove(e) {
       if (!dragState) return;
+      e.stopPropagation(); // Prevent pan when dragging tasks
       const svgEl = document.getElementById('gantt-svg');
       const svgRect = svgEl.getBoundingClientRect();
       const mouseX = e.clientX - svgRect.left + ganttContainer.scrollLeft;
 
       const rawMin = startMinutes + (mouseX - LANE_LABEL_WIDTH - dragState.offsetX) / pixelsPerMinute;
-      const snapSize = shiftHeld ? 1 : 5;
-      let snapped = Math.round(rawMin / snapSize) * snapSize;
-      snapped = Math.max(startMinutes, Math.min(snapped, endMinutes - tasks[dragState.taskIdx].duration));
+      const dragTask = tasks[dragState.taskIdx];
+      let snapped;
+      if (shiftHeld) {
+        snapped = Math.round(rawMin);
+      } else {
+        // Grid snap at 5-min intervals
+        snapped = Math.round(rawMin / 5) * 5;
 
-      tasks[dragState.taskIdx].startMin = snapped;
+        // Magnetic snap: if a neighbor edge is closer than 5 min, prefer it
+        // Collect all start/end edges from other tasks sharing any sub-lane
+        const edges = [];
+        for (const t of tasks) {
+          if (t === dragTask || t.startMin === null || !t.assignedLanes) continue;
+          // Only consider tasks that share at least one sub-lane
+          const shares = dragTask.assignedLanes && dragTask.assignedLanes.some(l => t.assignedLanes.includes(l));
+          if (!shares) continue;
+          edges.push(t.startMin);                 // neighbor start
+          edges.push(t.startMin + t.duration);    // neighbor end
+        }
+        // For each edge, check snap to: dragTask.start == edge, or dragTask.end == edge
+        let bestDist = 5; // only snap if strictly closer than the grid size
+        for (const edge of edges) {
+          // Snap dragged task's start to edge
+          const distStart = Math.abs(rawMin - edge);
+          if (distStart < bestDist) {
+            bestDist = distStart;
+            snapped = edge;
+          }
+          // Snap dragged task's end to edge (so startMin = edge - duration)
+          const alignEnd = edge - dragTask.duration;
+          const distEnd = Math.abs(rawMin - alignEnd);
+          if (distEnd < bestDist) {
+            bestDist = distEnd;
+            snapped = alignEnd;
+          }
+        }
+      }
+      snapped = Math.max(startMinutes, Math.min(snapped, endMinutes - dragTask.duration));
+
+      dragTask.startMin = snapped;
       drawGantt();
 
       // Re-mark dragging visuals
@@ -625,8 +1237,8 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
       if (!dragState) return;
       const task = tasks[dragState.taskIdx];
 
-      // Check violations for this task
-      const violations = getViolations().filter(v => v.to === task);
+      // Check violations for this task (dependency + overlap)
+      const violations = getViolations().filter(v => v.to === task || v.from === task);
       if (violations.length > 0) {
         // Shake effect: briefly restore, then keep user's position but show error
         document.querySelectorAll(`.task-block[data-task-idx="${dragState.taskIdx}"]`).forEach(b => {
@@ -641,6 +1253,88 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
 
       dragState = null;
       drawGantt();
+      syncGanttToDsl();
+    }
+
+    // ── Context menu for sub-lane reassignment ──
+    function hideContextMenu() {
+      contextMenuEl.classList.add('hidden');
+      contextMenuEl.innerHTML = '';
+    }
+
+    function onRightClick(e, block) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const idx = parseInt(block.dataset.taskIdx);
+      const task = tasks[idx];
+      if (!task || !task.assignedLanes || task.assignedLanes.length === 0) return;
+
+      // Find which group requirement this sub-lane belongs to
+      const currentSubLane = block.dataset.sublane;
+      let reqIdx = -1;
+      let groupName = null;
+      for (let i = 0; i < task.laneReqs.length; i++) {
+        const req = task.laneReqs[i];
+        const subLanes = getSubLanesForGroup(req.groupName);
+        if (subLanes.includes(currentSubLane)) {
+          reqIdx = i;
+          groupName = req.groupName;
+          break;
+        }
+      }
+      if (!groupName || reqIdx === -1) return;
+
+      const req = task.laneReqs[reqIdx];
+      
+      // For multi-lane requirements, don't show context menu (too complex to reassign all at once)
+      if (req.count > 1) return;
+
+      // Get all sub-lanes for this group
+      const subLanes = getSubLanesForGroup(groupName);
+      if (subLanes.length <= 1) return; // No point showing menu if only one option
+
+      // Build menu
+      contextMenuEl.innerHTML = '';
+      subLanes.forEach(subLane => {
+        const item = document.createElement('div');
+        item.className = 'context-menu-item' + (subLane === currentSubLane ? ' active' : '');
+        item.textContent = subLane;
+        item.addEventListener('click', () => {
+          // Reassign task to this sub-lane (only works for single-lane requirements)
+          if (task.assignedLanes && reqIdx < task.assignedLanes.length) {
+            task.assignedLanes[reqIdx] = subLane;
+            hideContextMenu();
+            drawGantt();
+            syncGanttToDsl();
+          }
+        });
+        contextMenuEl.appendChild(item);
+      });
+
+      // Position menu
+      contextMenuEl.style.left = e.clientX + 'px';
+      contextMenuEl.style.top = e.clientY + 'px';
+      contextMenuEl.classList.remove('hidden');
+    }
+
+    // Hide context menu on click outside or Escape
+    document.addEventListener('click', hideContextMenu);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') hideContextMenu();
+    });
+
+    // ── Parse error display ──
+    const parseErrorsContainer = document.getElementById('parse-errors');
+    function showParseErrors(errors) {
+      const inner = parseErrorsContainer.querySelector('div');
+      if (errors.length === 0) {
+        parseErrorsContainer.classList.add('hidden');
+        inner.innerHTML = '';
+        return;
+      }
+      inner.innerHTML = errors.map(e => `<div>• ${escapeHtml(e)}</div>`).join('');
+      parseErrorsContainer.classList.remove('hidden');
     }
 
     // ── Helpers ──
@@ -652,10 +1346,14 @@ Plate meal | 10m | Person 1, Person 2 | #10b981 | after Cook pasta, Bake chicken
     document.getElementById('btn-copy-prompt').addEventListener('click', () => {
       const prompt = `I need you to generate task data for a Gantt chart. Please output the data in the following exact format:
 
-LANES (one per line):
-Lane Name 1
+LANES (one per line, use Name: count for multiple):
+Lane Name: count
 Lane Name 2
 ...
+
+Examples:
+Person: 2    (creates "Person 1" and "Person 2")
+Oven         (creates just "Oven")
 
 TASKS (one per line, pipe-separated):
 Task Name | Duration | Lane(s) | Color | Dependencies | @Start
@@ -663,15 +1361,17 @@ Task Name | Duration | Lane(s) | Color | Dependencies | @Start
 Field details:
 - Task Name: a unique short name for the task
 - Duration: e.g. 15m, 1h, 1h30m, 45m
-- Lane(s): comma-separated lane names this task occupies (must match a lane above)
+- Lane(s): comma-separated lane group names with optional quantities (e.g. "Person", "Person*2", "Person, Oven*2") — tasks will be auto-assigned to sub-lanes. Use *count to require multiple sub-lanes of the same group. Append (P) to mark a lane as passive for that task (e.g. "Person(P)") — passive lanes are tracked visually but don't block scheduling.
 - Color: a hex color like #3b82f6 (optional, defaults to blue)
 - Dependencies: "after Task A, Task B" — tasks that must finish before this one starts (optional)
 - @Start: pin a task to a specific time, e.g. @08:30 (optional — omit to let auto-schedule decide)
 
 Example:
-Chop vegetables | 15m | Person 1 | #3b82f6 | @08:00
-Boil water | 10m | Stove | #ef4444
-Cook pasta | 20m | Stove | #f59e0b | after Boil water
+Chop vegetables | 15m | Person | #3b82f6 | @08:00
+Boil water | 10m | Person | #ef4444
+Cook pasta | 20m | Person | #f59e0b | after Boil water
+Bake chicken | 45m | Oven | #a855f7 | after Season chicken
+Plate meal | 10m | Person*2, Oven | #10b981 | after Cook pasta, Bake chicken
 
 START TIME: 08:00
 END TIME: 14:00
@@ -687,37 +1387,141 @@ Please generate a plan for: [DESCRIBE YOUR SCENARIO HERE]`;
       });
     });
 
-    // ── Copy Tasks (export current positions) ──
-    document.getElementById('btn-export').addEventListener('click', () => {
+    // ── Export dropdown ──
+    const exportMenu = document.getElementById('export-menu');
+    const exportBtn = document.getElementById('btn-export');
+    let exportMenuOpen = false;
+
+    exportBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exportMenuOpen = !exportMenuOpen;
+      exportMenu.classList.toggle('hidden', !exportMenuOpen);
+    });
+
+    document.getElementById('export-copy').addEventListener('click', () => {
       if (!tasks.length) return;
       const text = exportTasks();
       navigator.clipboard.writeText(text).then(() => {
-        const btn = document.getElementById('btn-export');
+        const btn = document.getElementById('export-copy');
         const orig = btn.textContent;
         btn.textContent = 'Copied!';
-        btn.classList.add('bg-green-700');
-        setTimeout(() => { btn.textContent = orig; btn.classList.remove('bg-green-700'); }, 1500);
+        setTimeout(() => { btn.textContent = orig; }, 1500);
       });
+      exportMenuOpen = false;
+      exportMenu.classList.add('hidden');
     });
 
-    // ── Button handlers ──
+    document.getElementById('export-save').addEventListener('click', () => {
+      if (!tasks.length) return;
+      const exportedTasks = exportTasks();
+      const content = `VERSION 1
+
+START ${startTimeInput.value}
+END ${endTimeInput.value}
+
+LANES
+${lanesInput.value}
+
+TASKS
+${exportedTasks}`;
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'gantt.gantt';
+      a.click();
+      URL.revokeObjectURL(url);
+      exportMenuOpen = false;
+      exportMenu.classList.add('hidden');
+    });
+
+    // Close export menu on click outside
+    document.addEventListener('click', (e) => {
+      if (exportMenuOpen && !exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
+        exportMenuOpen = false;
+        exportMenu.classList.add('hidden');
+      }
+    });
+
+    // ── Import button ──
+    const fileInput = document.getElementById('file-input');
+    document.getElementById('btn-import').addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target.result;
+        // Parse .gantt format
+        const lines = content.split('\n');
+        let version = null;
+        let start = null;
+        let end = null;
+        let inLanes = false;
+        let inTasks = false;
+        const laneLines = [];
+        const taskLines = [];
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          if (line.startsWith('VERSION ')) {
+            version = parseInt(line.slice(8));
+          } else if (line.startsWith('START ')) {
+            start = line.slice(6);
+          } else if (line.startsWith('END ')) {
+            end = line.slice(4);
+          } else if (line === 'LANES') {
+            inLanes = true;
+            inTasks = false;
+          } else if (line === 'TASKS') {
+            inLanes = false;
+            inTasks = true;
+          } else if (inLanes) {
+            laneLines.push(line);
+          } else if (inTasks) {
+            taskLines.push(line);
+          }
+        }
+
+        suppressSync = true;
+        if (start) startTimeInput.value = start;
+        if (end) endTimeInput.value = end;
+        if (laneLines.length) lanesInput.value = laneLines.join('\n');
+        if (taskLines.length) tasksInput.value = taskLines.join('\n');
+        suppressSync = false;
+        onDslChange();
+      };
+      reader.readAsText(file);
+      e.target.value = ''; // Reset file input
+    });
+
+    // ── Render button (shown only when input needs auto-scheduling) ──
     document.getElementById('btn-render').addEventListener('click', () => {
-      // Re-parse; pinned (@) start times are preserved, others get auto-scheduled
-      render();
-    });
+      const parsed = parseLaneGroups();
+      laneGroups = parsed.groups;
+      lanes = parsed.flatLanes;
+      const parseResult = parseTasks(lanes);
+      tasks = parseResult.tasks;
+      showParseErrors(parseResult.errors);
+      if (parseResult.errors.length > 0) return;
 
-    document.getElementById('btn-auto').addEventListener('click', () => {
-      lanes = parseLanes();
-      tasks = parseTasks(lanes);
-      tasks.forEach(t => { t.startMin = null; t.pinned = false; });
       startMinutes = timeToMinutes(startTimeInput.value);
       endMinutes = timeToMinutes(endTimeInput.value);
       if (endMinutes <= startMinutes) endMinutes = startMinutes + 360;
+
+      // Auto-schedule unpinned tasks
       autoSchedule();
+
       const totalMinutes = endMinutes - startMinutes;
       const availableWidth = ganttContainer.clientWidth - LANE_LABEL_WIDTH - 20;
       pixelsPerMinute = Math.max(2, availableWidth / totalMinutes);
       drawGantt();
+      syncGanttToDsl(); // Write back the now-pinned DSL
+      document.getElementById('btn-render').classList.add('hidden');
     });
 
     showNowCheck.addEventListener('change', () => { if (tasks.length) drawGantt(); });
@@ -743,6 +1547,7 @@ Please generate a plan for: [DESCRIBE YOUR SCENARIO HERE]`;
 
     // ── Initial render with example data ──
     render();
+    syncGanttToDsl(); // Write back the pinned DSL so everything becomes fully pinned
   </script>
 </body>
 </html>
