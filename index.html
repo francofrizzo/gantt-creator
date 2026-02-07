@@ -88,23 +88,23 @@
         <div class="px-3 pt-3 pb-1">
           <label class="block text-xs font-medium text-slate-400 mb-1">Time Range</label>
           <div class="flex gap-2">
-            <input id="start-time" type="time" value="09:00" class="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+            <input id="start-time" type="time" value="09:00" class="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500" />
             <span class="self-center text-slate-500">→</span>
-            <input id="end-time" type="time" value="14:00" class="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+            <input id="end-time" type="time" value="14:00" class="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500" />
           </div>
         </div>
 
         <!-- Lanes -->
         <div class="px-3 pt-2 pb-1">
           <label class="block text-xs font-medium text-slate-400 mb-1">Lanes <span class="text-slate-500">(one per line, use Name: count for multiple)</span></label>
-          <textarea id="lanes-input" rows="4" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 resize-none" placeholder="Person: 2&#10;Oven&#10;Stove">Person: 2
+          <textarea id="lanes-input" rows="4" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500 resize-none" placeholder="Person: 2&#10;Oven&#10;Stove">Person: 2
 Oven</textarea>
         </div>
 
         <!-- Tasks -->
         <div class="px-3 pt-2 pb-1 flex flex-col flex-1 overflow-hidden">
           <label class="block text-xs font-medium text-slate-400 mb-1">Tasks <span class="text-slate-500">(one per line — see Help tab for format)</span></label>
-          <textarea id="tasks-input" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-500 resize-none flex-1" placeholder="Chop vegetables | 15m | Person | #3b82f6&#10;Boil water | 10m | Person | #ef4444&#10;Cook pasta | 20m | Person | #f59e0b | after Boil water">Chop vegetables | 15m | Person | #3b82f6
+          <textarea id="tasks-input" class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500 resize-none flex-1" placeholder="Chop vegetables | 15m | Person | #3b82f6&#10;Boil water | 10m | Person | #ef4444&#10;Cook pasta | 20m | Person | #f59e0b | after Boil water">Chop vegetables | 15m | Person | #3b82f6
 Boil water | 10m | Person | #ef4444
 Season chicken | 10m | Person | #a855f7 | after Chop vegetables
 Cook pasta | 20m | Person | #f59e0b | after Boil water
@@ -213,9 +213,9 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
     let startMinutes = 0;
     let endMinutes = 0;
     let pixelsPerMinute = 3;
-    const LANE_LABEL_WIDTH = 120;
-    const HEADER_HEIGHT = 32;
-    const BLOCK_PADDING = 6;
+    const LANE_LABEL_WIDTH = 140;
+    const HEADER_HEIGHT = 36;
+    const BLOCK_PADDING = 10;
     let shiftHeld = false;
     let dragState = null;
     let panState = null;
@@ -795,9 +795,10 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
     }
 
     // ── Cascade layout: assign each task a sequence index per lane for a visual stagger ──
-    const CASCADE_STEP = 4;        // pixels of vertical offset per successive task (reduced for subtlety)
-    const PASSIVE_OFFSET = -35;    // pixels to float passive tasks above regular tasks
-    const BLOCK_HEIGHT = 30;       // height of each task block
+    const CASCADE_STEP = 5;        // pixels of vertical offset per successive task (reduced for subtlety)
+    const BLOCK_HEIGHT = 34;       // height of each task block
+    const PASSIVE_BAR_HEIGHT = 10; // height of passive task thin bars
+    const PASSIVE_BAR_GAP = 3;    // gap between stacked passive bars
 
     function computeCascade() {
       // For each sub-lane, separate passive and non-passive tasks, then assign sequence indices.
@@ -872,11 +873,12 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
         const passiveCount = passiveCounts[subLane] || 0;
         
         // Regular tasks height: block height + cascade offset for each additional task
-        const regularHeight = BLOCK_HEIGHT + Math.max(0, count - passiveCount - 1) * CASCADE_STEP;
+        const regularCount = count - passiveCount;
+        const regularHeight = BLOCK_HEIGHT + Math.max(0, regularCount - 1) * CASCADE_STEP;
         
-        // Space needed for passive tasks above: offset + cascade space
+        // Space needed for passive task thin bars above active tasks
         const passiveSpace = passiveCount > 0 
-          ? Math.abs(PASSIVE_OFFSET) + Math.max(0, passiveCount - 1) * CASCADE_STEP + BLOCK_HEIGHT
+          ? passiveCount * PASSIVE_BAR_HEIGHT + (passiveCount - 1) * PASSIVE_BAR_GAP + 12
           : 0;
         
         // Total lane height = passive space + regular height + padding
@@ -902,24 +904,33 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
       // Background
       svg += `<rect width="${chartWidth}" height="${chartHeight}" fill="#0f172a"/>`;
 
-      // Time grid lines and labels
+      // Header bar with first alternating color
+      svg += `<rect x="0" y="0" width="${chartWidth}" height="${HEADER_HEIGHT}" fill="#1e293b"/>`;
+
+      // Lane rows (variable height) - alternation starts after header (i=0 uses second color)
+      for (let i = 0; i < lanes.length; i++) {
+        const y = HEADER_HEIGHT + laneYOffsets[i];
+        const h = laneHeights[i];
+        svg += `<rect x="0" y="${y}" width="${chartWidth}" height="${h}" fill="${i % 2 === 0 ? '#0f172a' : '#1e293b'}"/>`;
+        // Lane label (vertically centered)
+        svg += `<text x="${LANE_LABEL_WIDTH - 10}" y="${y + h / 2 + 4}" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="sans-serif">${escapeHtml(lanes[i])}</text>`;
+        // Separator
+        svg += `<line x1="0" y1="${y + h}" x2="${chartWidth}" y2="${y + h}" stroke="#1e293b" stroke-width="0.5"/>`;
+      }
+
+      // Time grid lines and labels (drawn after lanes so they appear on top)
+      // Draw subtle half-hour lines first
+      for (let m = 30; m < totalMinutes; m += 60) {
+        const x = LANE_LABEL_WIDTH + m * pixelsPerMinute;
+        svg += `<line x1="${x}" y1="${HEADER_HEIGHT}" x2="${x}" y2="${chartHeight}" stroke="#1a2332" stroke-width="0.5" opacity="0.5"/>`;
+      }
+      // Draw main grid lines (hours and other intervals)
       const step = totalMinutes <= 120 ? 15 : totalMinutes <= 360 ? 30 : 60;
       for (let m = 0; m <= totalMinutes; m += step) {
         const x = LANE_LABEL_WIDTH + m * pixelsPerMinute;
         const isMajor = m % 60 === 0;
         svg += `<line x1="${x}" y1="${HEADER_HEIGHT}" x2="${x}" y2="${chartHeight}" stroke="${isMajor ? '#334155' : '#1e293b'}" stroke-width="${isMajor ? 1 : 0.5}"/>`;
-        svg += `<text x="${x}" y="${HEADER_HEIGHT - 8}" fill="#94a3b8" font-size="11" text-anchor="middle" font-family="monospace">${minutesToTime(startMinutes + m)}</text>`;
-      }
-
-      // Lane rows (variable height)
-      for (let i = 0; i < lanes.length; i++) {
-        const y = HEADER_HEIGHT + laneYOffsets[i];
-        const h = laneHeights[i];
-        svg += `<rect x="0" y="${y}" width="${chartWidth}" height="${h}" fill="${i % 2 === 0 ? '#0f172a' : '#111827'}"/>`;
-        // Lane label (vertically centered)
-        svg += `<text x="${LANE_LABEL_WIDTH - 10}" y="${y + h / 2 + 4}" fill="#cbd5e1" font-size="12" text-anchor="end" font-family="sans-serif">${escapeHtml(lanes[i])}</text>`;
-        // Separator
-        svg += `<line x1="0" y1="${y + h}" x2="${chartWidth}" y2="${y + h}" stroke="#1e293b" stroke-width="0.5"/>`;
+        svg += `<text x="${x}" y="${HEADER_HEIGHT - 8}" fill="#94a3b8" font-size="12" text-anchor="middle" font-family="monospace">${minutesToTime(startMinutes + m)}</text>`;
       }
 
       // Lane label separator
@@ -934,18 +945,21 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
         const seq = (taskCascade.get(taskIdx) || {})[subLaneName] || 0;
         const passiveCount = passiveCounts[subLaneName] || 0;
         const passiveSpace = passiveCount > 0 
-          ? Math.abs(PASSIVE_OFFSET) + Math.max(0, passiveCount - 1) * CASCADE_STEP + BLOCK_HEIGHT
+          ? passiveCount * PASSIVE_BAR_HEIGHT + (passiveCount - 1) * PASSIVE_BAR_GAP + 12
           : 0;
         const laneY = HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING + passiveSpace;
-        // Passive tasks start at top of lane and cascade down, regular tasks start after passive space
-        const y = task && isPassiveOnLane(task, subLaneName)
-          ? HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING + seq * CASCADE_STEP
-          : laneY + seq * CASCADE_STEP;
-        return y + BLOCK_HEIGHT / 2;
+        // Passive tasks: thin bars at top of lane; regular tasks start after passive space
+        if (task && isPassiveOnLane(task, subLaneName)) {
+          const y = HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING + seq * (PASSIVE_BAR_HEIGHT + PASSIVE_BAR_GAP);
+          return y + PASSIVE_BAR_HEIGHT / 2;
+        }
+        return laneY + seq * CASCADE_STEP + BLOCK_HEIGHT / 2;
       }
 
-      // Dependency arrows (behind blocks)
+      // Dependency arrows (behind blocks) — with color gradients
+      const arrowDefs = [];
       if (showDepsCheck.checked) {
+        let arrowIdx = 0;
         for (let ti = 0; ti < tasks.length; ti++) {
           const task = tasks[ti];
           for (const depName of task.deps) {
@@ -961,24 +975,71 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
             const toX = LANE_LABEL_WIDTH + (task.startMin - startMinutes) * pixelsPerMinute;
             const toY = taskBlockCenterY(ti, task.assignedLanes && task.assignedLanes[0] ? task.assignedLanes[0] : null);
 
-            const color = isViolation ? '#ef4444' : '#64748b';
             const dashArray = isViolation ? '6 3' : 'none';
 
-            // Route: leave horizontally right, curve down/up, arrive horizontally into target
-            const GAP = 10;           // horizontal run-in so the arrow lands flat
-            const curveToX = toX - GAP; // where the curve ends, then a straight segment to toX
-            const midX = (fromX + curveToX) / 2;
+            // Step routing: always arrives from the left
+            const GAP = 12;
+            const RADIUS = 6;
+            const MIN_RUN = 20;
 
-            svg += `<path d="M${fromX},${fromY} C${midX},${fromY} ${midX},${toY} ${curveToX},${toY} L${toX},${toY}" fill="none" stroke="${color}" stroke-width="1.5" stroke-dasharray="${dashArray}" class="dep-arrow" marker-end="url(#arrow-${isViolation ? 'red' : 'gray'})"/>`;
+            // Same lane and adjacent: skip the arrow entirely
+            const sameLane = Math.abs(fromY - toY) < 2;
+            const gapMinutes = task.startMin - (dep.startMin + dep.duration);
+            if (sameLane && gapMinutes >= 0 && gapMinutes <= 5) continue;
+
+            // Gradient from source color to target color
+            const gradId = `dep-grad-${arrowIdx}`;
+            const markerId = `dep-arrow-${arrowIdx}`;
+            const fromColor = isViolation ? '#ef4444' : dep.color;
+            const toColor = isViolation ? '#ef4444' : task.color;
+            arrowDefs.push(`<linearGradient id="${gradId}" gradientUnits="userSpaceOnUse" x1="${fromX}" y1="${fromY}" x2="${toX}" y2="${toY}"><stop offset="0%" stop-color="${fromColor}" stop-opacity="0.7"/><stop offset="100%" stop-color="${toColor}" stop-opacity="0.7"/></linearGradient>`);
+            arrowDefs.push(`<marker id="${markerId}" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto"><path d="M0,0 L6,2 L0,4" fill="${toColor}" opacity="0.7"/></marker>`);
+
+            const markerEnd = `marker-end="url(#${markerId})"`;
+
+            let path;
+            if (sameLane) {
+              // Same height: straight line
+              path = `M${fromX},${fromY} L${toX},${toY}`;
+            } else {
+              const dir = toY > fromY ? 1 : -1;
+              const straightGap = toX - GAP - fromX;
+
+              if (straightGap >= MIN_RUN * 0.5) {
+                // Normal: right → down → right into target (3-segment)
+                const midX = fromX + straightGap / 2;
+                const r = Math.min(RADIUS, Math.abs(fromY - toY) / 2, straightGap / 4);
+                path = `M${fromX},${fromY} L${midX - r},${fromY} Q${midX},${fromY} ${midX},${fromY + dir * r} L${midX},${toY - dir * r} Q${midX},${toY} ${midX + r},${toY} L${toX},${toY}`;
+              } else {
+                // Tight: 5-segment staircase that arrives from the left
+                const rightX = Math.max(fromX, toX) + MIN_RUN * 0.3;
+                const leftX = Math.min(fromX, toX - GAP) - MIN_RUN * 0.3;
+                const midY = (fromY + toY) / 2;
+                const halfVert = Math.abs(midY - fromY);
+                const bridgeLen = Math.abs(rightX - leftX);
+                const r = Math.min(RADIUS, halfVert, bridgeLen > 0 ? bridgeLen / 2 : RADIUS);
+
+                path = `M${fromX},${fromY}` +
+                  ` L${rightX - r},${fromY}` +
+                  ` Q${rightX},${fromY} ${rightX},${fromY + dir * r}` +
+                  ` L${rightX},${midY - dir * r}` +
+                  ` Q${rightX},${midY} ${rightX - r},${midY}` +
+                  ` L${leftX + r},${midY}` +
+                  ` Q${leftX},${midY} ${leftX},${midY + dir * r}` +
+                  ` L${leftX},${toY - dir * r}` +
+                  ` Q${leftX},${toY} ${leftX + r},${toY}` +
+                  ` L${toX},${toY}`;
+              }
+            }
+
+            svg += `<path d="${path}" fill="none" stroke="url(#${gradId})" stroke-width="1.5" stroke-dasharray="${dashArray}" class="dep-arrow" ${markerEnd}/>`;
+            arrowIdx++;
           }
         }
       }
 
-      // Arrow markers
-      svg += `<defs>
-        <marker id="arrow-gray" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#64748b"/></marker>
-        <marker id="arrow-red" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#ef4444"/></marker>
-      </defs>`;
+      // Arrow gradient and marker defs
+      svg += `<defs>${arrowDefs.join('')}</defs>`;
 
       // Task blocks (cascaded by sequence index)
       for (let ti = 0; ti < tasks.length; ti++) {
@@ -991,37 +1052,49 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
           const x = LANE_LABEL_WIDTH + (task.startMin - startMinutes) * pixelsPerMinute;
           const passiveCount = passiveCounts[subLane] || 0;
           const passiveSpace = passiveCount > 0 
-            ? Math.abs(PASSIVE_OFFSET) + Math.max(0, passiveCount - 1) * CASCADE_STEP + BLOCK_HEIGHT
+            ? passiveCount * PASSIVE_BAR_HEIGHT + (passiveCount - 1) * PASSIVE_BAR_GAP + 12
             : 0;
           const laneY = HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING + passiveSpace;
-          // Passive tasks start at top of lane and cascade down, regular tasks start after passive space
           const passiveHere = isPassiveOnLane(task, subLane);
-          const y = passiveHere 
-            ? HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING + seq * CASCADE_STEP
-            : laneY + seq * CASCADE_STEP;
           const w = task.duration * pixelsPerMinute;
-          const h = BLOCK_HEIGHT;
           const isViolated = violations.some(v =>
             v.to === task || (v.type === 'overlap' && v.from === task)
           );
 
-          svg += `<g class="task-block" data-task-idx="${ti}" data-sublane="${subLane}">`;
-          // Passive on this lane: reduced opacity and dashed border
-          const opacity = passiveHere ? '0.5' : '0.88';
-          svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${task.color}" opacity="${opacity}"/>`;
           if (passiveHere) {
-            svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="none" stroke="${task.color}" stroke-width="1.5" stroke-dasharray="4 2"/>`;
+            // Passive tasks: thin colored bars at top of lane
+            const y = HEADER_HEIGHT + laneYOffsets[laneIdx] + BLOCK_PADDING + seq * (PASSIVE_BAR_HEIGHT + PASSIVE_BAR_GAP);
+            const h = PASSIVE_BAR_HEIGHT;
+            svg += `<g class="task-block" data-task-idx="${ti}" data-sublane="${subLane}">`;
+            svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${task.color}" opacity="0.45"/>`;
+            svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="none" stroke="${task.color}" stroke-width="1" stroke-dasharray="3 2" opacity="0.7"/>`;
+            if (isViolated) {
+              svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="3 2"/>`;
+            }
+            // Compact label only if bar is wide enough
+            const textMaxW = w - 6;
+            if (textMaxW > 30) {
+              svg += `<clipPath id="clip-${ti}-${laneIdx}-${seq}"><rect x="${x + 3}" y="${y}" width="${textMaxW}" height="${h}"/></clipPath>`;
+              svg += `<text x="${x + 4}" y="${y + h / 2 + 0.5}" fill="white" font-size="10" font-weight="500" dominant-baseline="middle" font-family="sans-serif" opacity="0.9" clip-path="url(#clip-${ti}-${laneIdx}-${seq})">${escapeHtml(task.name)}</text>`;
+            }
+            svg += `</g>`;
+          } else {
+            // Active tasks: full-height blocks
+            const y = laneY + seq * CASCADE_STEP;
+            const h = BLOCK_HEIGHT;
+            svg += `<g class="task-block" data-task-idx="${ti}" data-sublane="${subLane}">`;
+            svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${task.color}" opacity="0.88"/>`;
+            if (isViolated) {
+              svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="4 2"/>`;
+            }
+            // Text label (clipped)
+            const textMaxW = w - 8;
+            if (textMaxW > 20) {
+              svg += `<clipPath id="clip-${ti}-${laneIdx}-${seq}"><rect x="${x + 4}" y="${y}" width="${textMaxW}" height="${h}"/></clipPath>`;
+              svg += `<text x="${x + 6}" y="${y + h / 2 + 1}" fill="white" font-size="12" font-weight="500" dominant-baseline="middle" font-family="sans-serif" clip-path="url(#clip-${ti}-${laneIdx}-${seq})">${escapeHtml(task.name)}</text>`;
+            }
+            svg += `</g>`;
           }
-          if (isViolated) {
-            svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="4 2"/>`;
-          }
-          // Text label (clipped)
-          const textMaxW = w - 8;
-          if (textMaxW > 20) {
-            svg += `<clipPath id="clip-${ti}-${laneIdx}-${seq}"><rect x="${x + 4}" y="${y}" width="${textMaxW}" height="${h}"/></clipPath>`;
-            svg += `<text x="${x + 6}" y="${y + h / 2 + 1}" fill="white" font-size="11" font-weight="500" dominant-baseline="middle" font-family="sans-serif" clip-path="url(#clip-${ti}-${laneIdx}-${seq})">${escapeHtml(task.name)}</text>`;
-          }
-          svg += `</g>`;
         }
       }
 
