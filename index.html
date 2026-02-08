@@ -69,6 +69,8 @@
     <div class="flex items-center gap-2 text-xs text-slate-400">
       <span class="hidden sm:inline">Hold <kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-slate-300 font-mono">Shift</kbd> for 1-min snap</span>
       <span class="hidden sm:inline">·</span>
+      <span class="hidden sm:inline">Hold <kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-slate-300 font-mono">⌘</kbd> to drag with dependencies</span>
+      <span class="hidden sm:inline">·</span>
       <span id="snap-indicator" class="font-mono text-slate-300">Snap: 5 min</span>
     </div>
   </header>
@@ -212,11 +214,13 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
     let tasks = [];
     let startMinutes = 0;
     let endMinutes = 0;
+    let prevStartMinutes = null;
     let pixelsPerMinute = 3;
     const LANE_LABEL_WIDTH = 140;
     const HEADER_HEIGHT = 36;
     const BLOCK_PADDING = 10;
     let shiftHeld = false;
+    let metaHeld = false;
     let dragState = null;
     let panState = null;
     let suppressSync = false;  // Prevent sync loop when updating textarea programmatically
@@ -260,12 +264,19 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
     startTimeInput.addEventListener('input', debouncedDslChange);
     endTimeInput.addEventListener('input', debouncedDslChange);
 
-    // ── Shift key tracking ──
+    // ── Modifier key tracking ──
+    function updateSnapIndicator() {
+      let text = shiftHeld ? 'Snap: 1 min' : 'Snap: 5 min';
+      if (metaHeld) text += ' · Group';
+      snapIndicator.textContent = text;
+    }
     window.addEventListener('keydown', e => {
-      if (e.key === 'Shift') { shiftHeld = true; snapIndicator.textContent = 'Snap: 1 min'; }
+      if (e.key === 'Shift') { shiftHeld = true; updateSnapIndicator(); }
+      if (e.key === 'Meta') { metaHeld = true; updateSnapIndicator(); }
     });
     window.addEventListener('keyup', e => {
-      if (e.key === 'Shift') { shiftHeld = false; snapIndicator.textContent = 'Snap: 5 min'; }
+      if (e.key === 'Shift') { shiftHeld = false; updateSnapIndicator(); }
+      if (e.key === 'Meta') { metaHeld = false; updateSnapIndicator(); }
     });
 
     // ── Parsing ──
@@ -547,8 +558,24 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
       }
 
       // Update time range
-      startMinutes = timeToMinutes(startTimeInput.value);
+      const newStartMin = timeToMinutes(startTimeInput.value);
       endMinutes = timeToMinutes(endTimeInput.value);
+
+      // Detect start time change → shift all pinned task times & end time
+      const startTimeShifted = prevStartMinutes !== null && newStartMin !== prevStartMinutes;
+      if (startTimeShifted) {
+        const delta = newStartMin - prevStartMinutes;
+        for (const task of parsedTasks) {
+          if (task.startMin !== null) {
+            task.startMin += delta;
+          }
+        }
+        // Also shift end time to preserve window duration
+        endMinutes += delta;
+        endTimeInput.value = minutesToTime(endMinutes);
+      }
+      prevStartMinutes = newStartMin;
+      startMinutes = newStartMin;
       if (endMinutes <= startMinutes) endMinutes = startMinutes + 360;
 
       // Check if fully pinned
@@ -576,6 +603,7 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
         const availableWidth = ganttContainer.clientWidth - LANE_LABEL_WIDTH - 20;
         pixelsPerMinute = Math.max(2, availableWidth / totalMinutes);
         drawGantt();
+        if (startTimeShifted) syncGanttToDsl();  // Persist shifted times to DSL
         document.getElementById('btn-render').classList.add('hidden');
       } else {
         // Not fully pinned: show Render button, don't auto-render
@@ -983,9 +1011,12 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
             const MIN_RUN = 20;
 
             // Same lane and adjacent: skip the arrow entirely
-            const sameLane = Math.abs(fromY - toY) < 2;
+            const depPrimaryLane = dep.assignedLanes && dep.assignedLanes[0];
+            const taskPrimaryLane = task.assignedLanes && task.assignedLanes[0];
+            const sameLane = depPrimaryLane && taskPrimaryLane && depPrimaryLane === taskPrimaryLane;
             const gapMinutes = task.startMin - (dep.startMin + dep.duration);
-            if (sameLane && gapMinutes >= 0 && gapMinutes <= 5) continue;
+            const bothActive = depPrimaryLane && taskPrimaryLane && !isPassiveOnLane(dep, depPrimaryLane) && !isPassiveOnLane(task, taskPrimaryLane);
+            if (sameLane && bothActive && gapMinutes >= 0 && gapMinutes <= 5) continue;
 
             // Gradient from source color to target color
             const gradId = `dep-grad-${arrowIdx}`;
@@ -998,7 +1029,8 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
             const markerEnd = `marker-end="url(#${markerId})"`;
 
             let path;
-            if (sameLane) {
+            const sameY = Math.abs(fromY - toY) < 2;
+            if (sameY) {
               // Same height: straight line
               path = `M${fromX},${fromY} L${toX},${toY}`;
             } else {
@@ -1227,6 +1259,34 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
     ganttContainer.addEventListener('mouseup', onPanEnd);
     ganttContainer.addEventListener('mouseleave', onPanEnd);
 
+    // ── Dependency group helper ──
+    // Returns the set of task names connected to the given task via dependency relationships
+    // (both upstream and downstream, transitively)
+    function getDependencyGroup(taskName) {
+      const group = new Set();
+      const queue = [taskName];
+      while (queue.length > 0) {
+        const current = queue.shift();
+        const currentTask = tasks.find(t => t.name === current);
+        if (!currentTask) continue;
+        // Upstream: tasks this one depends on
+        for (const depName of currentTask.deps) {
+          if (!group.has(depName) && depName !== taskName) {
+            group.add(depName);
+            queue.push(depName);
+          }
+        }
+        // Downstream: tasks that depend on this one
+        for (const t of tasks) {
+          if (t.deps.includes(current) && !group.has(t.name) && t.name !== taskName) {
+            group.add(t.name);
+            queue.push(t.name);
+          }
+        }
+      }
+      return group;
+    }
+
     function onDragStart(e) {
       e.preventDefault();
       e.stopPropagation(); // Prevent pan from starting
@@ -1241,14 +1301,33 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
       const mouseX = e.clientX - svgRect.left + ganttContainer.scrollLeft;
       const taskX = LANE_LABEL_WIDTH + (task.startMin - startMinutes) * pixelsPerMinute;
 
+      const isGroupDrag = e.metaKey;
       dragState = {
         taskIdx: idx,
         offsetX: mouseX - taskX,
-        origStartMin: task.startMin
+        origStartMin: task.startMin,
+        groupDrag: isGroupDrag,
+        groupOffsets: null   // Map<taskIdx, deltaFromDragTask> for group members
       };
 
-      // Mark all blocks for this task
+      if (isGroupDrag) {
+        const group = getDependencyGroup(task.name);
+        const offsets = new Map();
+        for (let i = 0; i < tasks.length; i++) {
+          if (group.has(tasks[i].name)) {
+            offsets.set(i, tasks[i].startMin - task.startMin);
+          }
+        }
+        dragState.groupOffsets = offsets;
+      }
+
+      // Mark all blocks for this task (and group members)
       document.querySelectorAll(`.task-block[data-task-idx="${idx}"]`).forEach(b => b.classList.add('dragging'));
+      if (dragState.groupDrag && dragState.groupOffsets) {
+        for (const [tIdx] of dragState.groupOffsets) {
+          document.querySelectorAll(`.task-block[data-task-idx="${tIdx}"]`).forEach(b => b.classList.add('dragging'));
+        }
+      }
       tooltipEl.classList.add('hidden');
     }
 
@@ -1269,10 +1348,13 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
         snapped = Math.round(rawMin / 5) * 5;
 
         // Magnetic snap: if a neighbor edge is closer than 5 min, prefer it
-        // Collect all start/end edges from other tasks sharing any sub-lane
+        // Collect all start/end edges from other tasks sharing any sub-lane (excluding group members)
+        const groupIndices = dragState.groupDrag && dragState.groupOffsets ? new Set(dragState.groupOffsets.keys()) : new Set();
         const edges = [];
-        for (const t of tasks) {
+        for (let ti = 0; ti < tasks.length; ti++) {
+          const t = tasks[ti];
           if (t === dragTask || t.startMin === null || !t.assignedLanes) continue;
+          if (groupIndices.has(ti)) continue;  // Skip group members
           // Only consider tasks that share at least one sub-lane
           const shares = dragTask.assignedLanes && dragTask.assignedLanes.some(l => t.assignedLanes.includes(l));
           if (!shares) continue;
@@ -1297,31 +1379,66 @@ Music playing | 60m | Person(P) | #6b7280</textarea>
           }
         }
       }
-      snapped = Math.max(startMinutes, Math.min(snapped, endMinutes - dragTask.duration));
+      // Compute bounds: keep main task and all group members within the timeline
+      let minBound = startMinutes;
+      let maxBound = endMinutes - dragTask.duration;
+      if (dragState.groupDrag && dragState.groupOffsets) {
+        for (const [tIdx, offset] of dragState.groupOffsets) {
+          const t = tasks[tIdx];
+          // Group member position = snapped + offset
+          // Need: snapped + offset >= startMinutes
+          minBound = Math.max(minBound, startMinutes - offset);
+          // Need: snapped + offset + t.duration <= endMinutes
+          maxBound = Math.min(maxBound, endMinutes - t.duration - offset);
+        }
+      }
+      snapped = Math.max(minBound, Math.min(snapped, maxBound));
 
       dragTask.startMin = snapped;
+
+      // Move group members by maintaining their offset from the dragged task
+      if (dragState.groupDrag && dragState.groupOffsets) {
+        for (const [tIdx, offset] of dragState.groupOffsets) {
+          tasks[tIdx].startMin = snapped + offset;
+        }
+      }
+
       drawGantt();
 
       // Re-mark dragging visuals
       document.querySelectorAll(`.task-block[data-task-idx="${dragState.taskIdx}"]`).forEach(b => b.classList.add('dragging'));
+      if (dragState.groupDrag && dragState.groupOffsets) {
+        for (const [tIdx] of dragState.groupOffsets) {
+          document.querySelectorAll(`.task-block[data-task-idx="${tIdx}"]`).forEach(b => b.classList.add('dragging'));
+        }
+      }
     }
 
     function onDragEnd(e) {
       if (!dragState) return;
       const task = tasks[dragState.taskIdx];
 
-      // Check violations for this task (dependency + overlap)
-      const violations = getViolations().filter(v => v.to === task || v.from === task);
-      if (violations.length > 0) {
-        // Shake effect: briefly restore, then keep user's position but show error
-        document.querySelectorAll(`.task-block[data-task-idx="${dragState.taskIdx}"]`).forEach(b => {
-          b.classList.add('error');
-          b.classList.remove('dragging');
-        });
-      } else {
-        document.querySelectorAll(`.task-block[data-task-idx="${dragState.taskIdx}"]`).forEach(b => {
-          b.classList.remove('dragging');
-        });
+      // Collect all moved task indices (main + group dependents)
+      const movedIndices = new Set([dragState.taskIdx]);
+      if (dragState.groupDrag && dragState.groupOffsets) {
+        for (const [tIdx] of dragState.groupOffsets) movedIndices.add(tIdx);
+      }
+      const movedTasks = new Set([...movedIndices].map(i => tasks[i]));
+
+      // Check violations for all moved tasks (dependency + overlap)
+      const violations = getViolations().filter(v => movedTasks.has(v.to) || movedTasks.has(v.from));
+
+      for (const mIdx of movedIndices) {
+        if (violations.length > 0) {
+          document.querySelectorAll(`.task-block[data-task-idx="${mIdx}"]`).forEach(b => {
+            b.classList.add('error');
+            b.classList.remove('dragging');
+          });
+        } else {
+          document.querySelectorAll(`.task-block[data-task-idx="${mIdx}"]`).forEach(b => {
+            b.classList.remove('dragging');
+          });
+        }
       }
 
       dragState = null;
