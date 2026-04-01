@@ -1659,55 +1659,66 @@ ${exportedTasks}`;
       fileInput.click();
     });
 
+    function loadGanttContent(content) {
+      const lines = content.split('\n');
+      let start = null;
+      let end = null;
+      let inLanes = false;
+      let inTasks = false;
+      const laneLines = [];
+      const taskLines = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        if (line.startsWith('VERSION ')) {
+          // version = parseInt(line.slice(8));
+        } else if (line.startsWith('START ')) {
+          start = line.slice(6);
+        } else if (line.startsWith('END ')) {
+          end = line.slice(4);
+        } else if (line === 'LANES') {
+          inLanes = true;
+          inTasks = false;
+        } else if (line === 'TASKS') {
+          inLanes = false;
+          inTasks = true;
+        } else if (inLanes) {
+          laneLines.push(line);
+        } else if (inTasks) {
+          taskLines.push(line);
+        }
+      }
+
+      suppressSync = true;
+      if (start) startTimeInput.value = start;
+      if (end) endTimeInput.value = end;
+      if (laneLines.length) lanesInput.value = laneLines.join('\n');
+      if (taskLines.length) tasksInput.value = taskLines.join('\n');
+      suppressSync = false;
+      onDslChange();
+    }
+
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target.result;
-        // Parse .gantt format
-        const lines = content.split('\n');
-        let version = null;
-        let start = null;
-        let end = null;
-        let inLanes = false;
-        let inTasks = false;
-        const laneLines = [];
-        const taskLines = [];
-
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (!line) continue;
-          if (line.startsWith('VERSION ')) {
-            version = parseInt(line.slice(8));
-          } else if (line.startsWith('START ')) {
-            start = line.slice(6);
-          } else if (line.startsWith('END ')) {
-            end = line.slice(4);
-          } else if (line === 'LANES') {
-            inLanes = true;
-            inTasks = false;
-          } else if (line === 'TASKS') {
-            inLanes = false;
-            inTasks = true;
-          } else if (inLanes) {
-            laneLines.push(line);
-          } else if (inTasks) {
-            taskLines.push(line);
-          }
-        }
-
-        suppressSync = true;
-        if (start) startTimeInput.value = start;
-        if (end) endTimeInput.value = end;
-        if (laneLines.length) lanesInput.value = laneLines.join('\n');
-        if (taskLines.length) tasksInput.value = taskLines.join('\n');
-        suppressSync = false;
-        onDslChange();
-      };
+      reader.onload = (event) => loadGanttContent(event.target.result);
       reader.readAsText(file);
       e.target.value = ''; // Reset file input
     });
+
+    // ── Load from URL hash ──
+    (function loadFromHash() {
+      const hash = window.location.hash;
+      if (!hash.startsWith('#data=')) return;
+      try {
+        const content = atob(decodeURIComponent(hash.slice(6)));
+        loadGanttContent(content);
+      } catch (e) {
+        console.error('Failed to load from URL hash:', e);
+      }
+    })();
 
     // ── Render button (shown only when input needs auto-scheduling) ──
     document.getElementById('btn-render').addEventListener('click', () => {
