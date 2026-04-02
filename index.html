@@ -1713,7 +1713,7 @@ ${exportedTasks}`;
       const hash = window.location.hash;
       if (!hash.startsWith('#data=')) return;
       try {
-        const content = atob(decodeURIComponent(hash.slice(6)));
+        const content = decodeURIComponent(escape(atob(decodeURIComponent(hash.slice(6)))));
         loadGanttContent(content);
       } catch (e) {
         console.error('Failed to load from URL hash:', e);
